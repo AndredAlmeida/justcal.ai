@@ -8,6 +8,7 @@ const INITIAL_MONTH_SPAN = 6;
 const LOAD_BATCH = 4;
 const TOP_THRESHOLD = 450;
 const BOTTOM_THRESHOLD = 650;
+const FAST_SCROLL_DURATION_MS = 380;
 
 export const MIN_SELECTION_EXPANSION = 1;
 export const MAX_SELECTION_EXPANSION = 3;
@@ -96,7 +97,7 @@ function applyDayStateToCell(cell, dayState) {
   });
 }
 
-function buildMonthCard(monthStart, getDayStateByKey) {
+function buildMonthCard(monthStart, getDayStateByKey, todayDayKey) {
   const year = monthStart.getFullYear();
   const monthIndex = monthStart.getMonth();
   const totalDays = daysInMonth(year, monthIndex);
@@ -147,6 +148,9 @@ function buildMonthCard(monthStart, getDayStateByKey) {
         const dayState = getDayStateByKey(dayKeyValue);
         td.dataset.dayKey = dayKeyValue;
         td.dataset.dayState = dayState;
+        if (dayKeyValue === todayDayKey) {
+          td.classList.add("today-cell");
+        }
 
         const dayCellContent = document.createElement("div");
         dayCellContent.className = "day-cell-content";
@@ -186,6 +190,7 @@ function buildMonthCard(monthStart, getDayStateByKey) {
 export function initInfiniteCalendar(container) {
   const now = new Date();
   const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const todayDayKey = formatDayKey(now.getFullYear(), now.getMonth(), now.getDate());
   const dayStatesByKey = loadDayStates();
   const tableBaseLayoutMap = new WeakMap();
 
@@ -194,6 +199,7 @@ export function initInfiniteCalendar(container) {
   let framePending = false;
   let selectedCell = null;
   let selectionExpansion = DEFAULT_SELECTION_EXPANSION;
+  let fastScrollFrame = 0;
 
   function getDayStateByKey(dayKeyValue) {
     return normalizeDayState(dayStatesByKey[dayKeyValue]);
@@ -375,7 +381,7 @@ export function initInfiniteCalendar(container) {
     const fragment = document.createDocumentFragment();
     const addedCards = [];
     for (let i = 1; i <= count; i += 1) {
-      const card = buildMonthCard(shiftMonth(latestMonth, i), getDayStateByKey);
+      const card = buildMonthCard(shiftMonth(latestMonth, i), getDayStateByKey, todayDayKey);
       addedCards.push(card);
       fragment.appendChild(card);
     }
@@ -391,7 +397,7 @@ export function initInfiniteCalendar(container) {
     const addedCards = [];
 
     for (let i = count; i >= 1; i -= 1) {
-      const card = buildMonthCard(shiftMonth(earliestMonth, -i), getDayStateByKey);
+      const card = buildMonthCard(shiftMonth(earliestMonth, -i), getDayStateByKey, todayDayKey);
       addedCards.push(card);
       fragment.appendChild(card);
     }
@@ -414,10 +420,82 @@ export function initInfiniteCalendar(container) {
     if (nearBottom) appendFutureMonths(LOAD_BATCH);
   }
 
+  function ensureMonthRendered(targetMonth) {
+    const targetTime = targetMonth.getTime();
+    while (targetTime < earliestMonth.getTime()) {
+      prependPastMonths(LOAD_BATCH);
+    }
+    while (targetTime > latestMonth.getTime()) {
+      appendFutureMonths(LOAD_BATCH);
+    }
+  }
+
+  function resolveElementScrollTop(targetElement, block = "center") {
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = targetElement.getBoundingClientRect();
+    const absoluteTop = container.scrollTop + targetRect.top - containerRect.top;
+
+    if (block === "start") return absoluteTop;
+    return absoluteTop - (container.clientHeight - targetRect.height) / 2;
+  }
+
+  function stopFastScroll() {
+    if (!fastScrollFrame) return;
+    cancelAnimationFrame(fastScrollFrame);
+    fastScrollFrame = 0;
+  }
+
+  function fastScrollTo(targetTop, durationMs = FAST_SCROLL_DURATION_MS) {
+    stopFastScroll();
+    const maxTop = Math.max(container.scrollHeight - container.clientHeight, 0);
+    const clampedTop = clamp(targetTop, 0, maxTop);
+    const startTop = container.scrollTop;
+    const delta = clampedTop - startTop;
+
+    if (Math.abs(delta) < 1 || durationMs <= 0) {
+      container.scrollTop = clampedTop;
+      return;
+    }
+
+    const startTs = performance.now();
+    const easeInOutCubic = (t) =>
+      t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2;
+
+    const step = (nowTs) => {
+      const elapsed = nowTs - startTs;
+      const progress = clamp(elapsed / durationMs, 0, 1);
+      container.scrollTop = startTop + delta * easeInOutCubic(progress);
+
+      if (progress < 1) {
+        fastScrollFrame = requestAnimationFrame(step);
+      } else {
+        fastScrollFrame = 0;
+      }
+    };
+
+    fastScrollFrame = requestAnimationFrame(step);
+  }
+
+  function scrollToPresentDay({ animate = true } = {}) {
+    const nowDate = new Date();
+    const presentMonth = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1);
+    ensureMonthRendered(presentMonth);
+
+    const todayDayKey = formatDayKey(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate());
+    const todayCell = container.querySelector(`td.day-cell[data-day-key="${todayDayKey}"]`);
+    const presentMonthCard = container.querySelector(`[data-month="${monthKey(presentMonth)}"]`);
+    const targetElement = todayCell ?? presentMonthCard;
+    if (!targetElement) return false;
+
+    const targetTop = resolveElementScrollTop(targetElement, todayCell ? "center" : "start");
+    fastScrollTo(targetTop, animate ? FAST_SCROLL_DURATION_MS : 0);
+    return true;
+  }
+
   function initialRender() {
     const fragment = document.createDocumentFragment();
     for (let i = -INITIAL_MONTH_SPAN; i <= INITIAL_MONTH_SPAN; i += 1) {
-      fragment.appendChild(buildMonthCard(shiftMonth(currentMonth, i), getDayStateByKey));
+      fragment.appendChild(buildMonthCard(shiftMonth(currentMonth, i), getDayStateByKey, todayDayKey));
     }
     container.appendChild(fragment);
 
@@ -434,6 +512,7 @@ export function initInfiniteCalendar(container) {
     maybeLoadMoreMonths();
     const initialCards = Array.from(container.querySelectorAll(".month-card"));
     applyDefaultLayoutForCards(initialCards, { refreshBase: true });
+    scrollToPresentDay({ animate: false });
   }
 
   container.addEventListener("scroll", () => {
@@ -483,6 +562,7 @@ export function initInfiniteCalendar(container) {
 
   initialRender();
   return {
+    scrollToPresentDay,
     setSelectionExpansion,
     getSelectionExpansion: () => selectionExpansion,
   };

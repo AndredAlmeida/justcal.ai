@@ -4,12 +4,19 @@ import { setupThemeToggle } from "./theme.js";
 
 const calendarContainer = document.getElementById("calendar-scroll");
 const panelToggleButton = document.getElementById("panel-toggle");
+const todayToggleButton = document.getElementById("today-toggle");
 const themeToggleButton = document.getElementById("theme-toggle");
 
 const calendarApi = calendarContainer ? initInfiniteCalendar(calendarContainer) : null;
 
 if (themeToggleButton) {
   setupThemeToggle(themeToggleButton);
+}
+
+if (todayToggleButton) {
+  todayToggleButton.addEventListener("click", () => {
+    calendarApi?.scrollToPresentDay?.();
+  });
 }
 
 setupTweakControls({
