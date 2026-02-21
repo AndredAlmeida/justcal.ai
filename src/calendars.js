@@ -6,7 +6,10 @@ function resolveCurrentCalendarLabel(switcher) {
   const activeCalendarButton = switcher?.querySelector(
     ".calendar-option.is-active[data-calendar-type]",
   );
-  const activeLabel = activeCalendarButton?.textContent?.trim();
+  const activeLabel =
+    activeCalendarButton
+      ?.querySelector(".calendar-option-label")
+      ?.textContent?.trim() || activeCalendarButton?.textContent?.trim();
   if (activeLabel) {
     return activeLabel;
   }
