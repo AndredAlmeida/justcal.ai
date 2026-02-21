@@ -1,10 +1,51 @@
-const CALENDAR_BUTTON_LABEL = "Calendars";
+const DEFAULT_CALENDAR_LABEL = "Energy Tracker";
+const CALENDAR_BUTTON_LABEL = "Open calendars";
 const CALENDAR_CLOSE_LABEL = "Close calendars";
 
+function resolveCurrentCalendarLabel(switcher) {
+  const activeCalendarButton = switcher?.querySelector(
+    ".calendar-option.is-active[data-calendar-type]",
+  );
+  const activeLabel = activeCalendarButton?.textContent?.trim();
+  if (activeLabel) {
+    return activeLabel;
+  }
+  return DEFAULT_CALENDAR_LABEL;
+}
+
+function setCalendarButtonLabel(button, nextLabel) {
+  if (!button) return;
+
+  const existingDot = button.querySelector(".calendar-current-dot");
+  const existingName = button.querySelector(".calendar-current-name");
+  if (existingDot && existingName) {
+    existingName.textContent = nextLabel;
+    return;
+  }
+
+  button.textContent = "";
+  const dot = document.createElement("span");
+  dot.className = "calendar-current-dot";
+  dot.setAttribute("aria-hidden", "true");
+
+  const name = document.createElement("span");
+  name.className = "calendar-current-name";
+  name.textContent = nextLabel;
+
+  button.append(dot, name);
+}
+
 function setCalendarSwitcherExpanded({ switcher, button, isExpanded }) {
+  const currentCalendarLabel = resolveCurrentCalendarLabel(switcher);
+  setCalendarButtonLabel(button, currentCalendarLabel);
   switcher.classList.toggle("is-expanded", isExpanded);
   button.setAttribute("aria-expanded", String(isExpanded));
-  button.setAttribute("aria-label", isExpanded ? CALENDAR_CLOSE_LABEL : CALENDAR_BUTTON_LABEL);
+  button.setAttribute(
+    "aria-label",
+    isExpanded
+      ? CALENDAR_CLOSE_LABEL
+      : `${CALENDAR_BUTTON_LABEL} (${currentCalendarLabel})`,
+  );
 }
 
 function setAddCalendarEditorExpanded({
