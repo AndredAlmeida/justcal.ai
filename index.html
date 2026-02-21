@@ -138,7 +138,7 @@
         margin: 0 auto;
         padding: 0.6rem 0.75rem;
         border: 1px solid var(--line);
-        border-radius: 12px;
+        border-radius: 18px;
         background: var(--panel);
         box-shadow: var(--card-shadow);
         display: grid;
@@ -510,6 +510,11 @@
         align-items: stretch;
         gap: 0.34rem;
         width: min(11.25rem, 68vw);
+        padding: 0.28rem;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: var(--panel);
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.22);
         max-height: 0;
         opacity: 0;
         overflow: hidden;
@@ -526,6 +531,18 @@
         opacity: 1;
         transform: translateY(0);
         pointer-events: auto;
+      }
+
+      .theme-options-title {
+        margin: 0 0 0.08rem;
+        padding: 0;
+        font-size: 0.62rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink);
+        opacity: 0.8;
+        text-align: center;
       }
 
       .theme-option {
@@ -917,6 +934,7 @@
     </button>
     <div id="theme-switcher">
       <div id="theme-options" aria-label="Theme options">
+        <p class="theme-options-title">Themes</p>
         <button
           type="button"
           class="theme-option"
