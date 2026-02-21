@@ -9,7 +9,6 @@ const LOAD_BATCH = 4;
 const TOP_THRESHOLD = 450;
 const BOTTOM_THRESHOLD = 650;
 const FAST_SCROLL_DURATION_MS = 380;
-const TABLE_LAYOUT_SETTLE_MS = 180;
 const SELECTED_ROW_HEIGHT_MULTIPLIER = 1.5;
 const MIN_OTHER_ROW_HEIGHT_RATIO = 0.06;
 
@@ -221,7 +220,6 @@ export function initInfiniteCalendar(container) {
   let cellExpansionY = DEFAULT_CELL_EXPANSION_Y;
   let cameraZoom = DEFAULT_CAMERA_ZOOM;
   let fastScrollFrame = 0;
-  let layoutSettleTimer = 0;
   let zoomResetTimer = 0;
   let zoomResetHandler = null;
 
@@ -385,10 +383,54 @@ export function initInfiniteCalendar(container) {
     }
   }
 
-  function clearLayoutSettleTimer() {
-    if (!layoutSettleTimer) return;
-    clearTimeout(layoutSettleTimer);
-    layoutSettleTimer = 0;
+  function parsePx(value, fallback) {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function getCellTargetCenterWithinCanvas(cell) {
+    const table = cell.closest("table");
+    if (!table) return null;
+
+    const tableRect = getElementRectWithinCanvas(table);
+    if (!tableRect) return null;
+
+    const rowIndex = Number(cell.parentElement?.dataset.rowIndex ?? -1);
+    const colIndex = Number(cell.dataset.colIndex ?? -1);
+
+    const bodyRows = Array.from(table.tBodies[0]?.rows ?? []);
+    const colEls = Array.from(table.querySelectorAll("colgroup col"));
+    if (
+      rowIndex < 0 ||
+      colIndex < 0 ||
+      rowIndex >= bodyRows.length ||
+      colIndex >= colEls.length
+    ) {
+      return null;
+    }
+
+    const headHeight = table.tHead?.offsetHeight ?? 0;
+    const defaultColWidth = table.clientWidth / colEls.length;
+    const defaultRowHeight = bodyRows.length
+      ? Math.max(table.offsetHeight - headHeight, 0) / bodyRows.length
+      : 0;
+
+    const colWidths = colEls.map((col) => parsePx(col.style.width, defaultColWidth));
+    const rowHeights = bodyRows.map((row) => parsePx(row.style.height, defaultRowHeight));
+
+    let x = tableRect.left;
+    for (let idx = 0; idx < colIndex; idx += 1) {
+      x += colWidths[idx];
+    }
+    x += colWidths[colIndex] / 2;
+
+    let y = tableRect.top + headHeight;
+    for (let idx = 0; idx < rowIndex; idx += 1) {
+      y += rowHeights[idx];
+    }
+    y += rowHeights[rowIndex] / 2;
+
+    return { x, y };
   }
 
   function clearCanvasZoom({ immediate = false } = {}) {
@@ -422,21 +464,18 @@ export function initInfiniteCalendar(container) {
     zoomResetTimer = window.setTimeout(finishReset, 300);
   }
 
-  function applyCanvasZoomForCell(cell, { preserveCurrentTransform = false } = {}) {
+  function applyCanvasZoomForCell(cell) {
     if (!cell || !cell.isConnected) return;
 
-    if (!preserveCurrentTransform) {
-      clearCanvasZoom({ immediate: true });
-    }
+    clearCanvasZoom({ immediate: true });
     const scale = clamp(cameraZoom, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM);
 
     requestAnimationFrame(() => {
       if (!cell.isConnected || selectedCell !== cell) return;
-      const rect = getElementRectWithinCanvas(cell);
-      if (!rect) return;
-
-      const originX = rect.left + rect.width / 2;
-      const originY = rect.top + rect.height / 2;
+      const center = getCellTargetCenterWithinCanvas(cell);
+      const originX = center?.x;
+      const originY = center?.y;
+      if (!Number.isFinite(originX) || !Number.isFinite(originY)) return;
       const viewX = originX - container.scrollLeft;
       const viewY = originY - container.scrollTop;
       const targetX = container.clientWidth / 2 - viewX;
@@ -448,17 +487,6 @@ export function initInfiniteCalendar(container) {
     });
   }
 
-  function scheduleSelectionZoomRecenter(cell) {
-    clearLayoutSettleTimer();
-    if (!cell || !cell.isConnected) return;
-
-    layoutSettleTimer = window.setTimeout(() => {
-      layoutSettleTimer = 0;
-      if (!selectedCell || selectedCell !== cell || !cell.isConnected) return;
-      applyCanvasZoomForCell(cell, { preserveCurrentTransform: true });
-    }, TABLE_LAYOUT_SETTLE_MS);
-  }
-
   function reapplySelectionFocus() {
     if (!selectedCell || !selectedCell.isConnected) return;
     const table = selectedCell.closest("table");
@@ -468,7 +496,6 @@ export function initInfiniteCalendar(container) {
       applyTableSelectionLayout(table, rowIndex, colIndex);
     }
     applyCanvasZoomForCell(selectedCell);
-    scheduleSelectionZoomRecenter(selectedCell);
   }
 
   function setCellExpansionX(nextValue) {
@@ -535,7 +562,6 @@ export function initInfiniteCalendar(container) {
   function clearSelectedDayCell() {
     if (!selectedCell) return false;
 
-    clearLayoutSettleTimer();
     const previousCell = selectedCell;
     selectedCell = null;
     previousCell.classList.remove("selected-day");
@@ -579,13 +605,11 @@ export function initInfiniteCalendar(container) {
         if (!selectedCell || selectedCell !== cell || !cell.isConnected) return;
         applyTableSelectionLayout(table, rowIndex, colIndex);
         applyCanvasZoomForCell(selectedCell);
-        scheduleSelectionZoomRecenter(selectedCell);
       });
       return;
     }
 
     applyCanvasZoomForCell(selectedCell);
-    scheduleSelectionZoomRecenter(selectedCell);
   }
 
   function appendFutureMonths(count) {
