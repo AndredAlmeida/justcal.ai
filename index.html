@@ -356,6 +356,64 @@
         transform: scale(1.2);
       }
 
+      .day-close-btn {
+        position: absolute;
+        top: 0.26rem;
+        right: 0.26rem;
+        width: 1.38rem;
+        height: 1.38rem;
+        border: 1px solid rgba(51, 65, 85, 0.26);
+        border-radius: 0.52rem;
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.98) 0%,
+          rgba(241, 245, 249, 0.9) 100%
+        );
+        color: #0f172a;
+        display: inline-grid;
+        place-items: center;
+        padding: 0;
+        font-size: 0.72rem;
+        font-weight: 800;
+        line-height: 1;
+        font-family: "Trebuchet MS", "Avenir Next", "Segoe UI", sans-serif;
+        opacity: 0;
+        pointer-events: none;
+        cursor: pointer;
+        z-index: 6;
+        transform: translateY(-2px) scale(0.9);
+        backdrop-filter: blur(3px);
+        transition:
+          opacity 0.16s ease,
+          transform 0.18s ease,
+          background-color 0.16s ease,
+          border-color 0.16s ease;
+      }
+
+      .day-close-btn:hover {
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 1) 0%,
+          rgba(248, 250, 252, 0.96) 100%
+        );
+        transform: translateY(-1px) scale(1.02);
+      }
+
+      .day-close-btn:active {
+        transform: translateY(0) scale(0.98);
+      }
+
+      .day-close-btn:focus-visible {
+        outline: 2px solid #60a5fa;
+        outline-offset: 1px;
+      }
+
+      #calendar-scroll.is-zoomed td.day-cell.selected-day .day-close-btn {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0) scale(1);
+      }
+
       .day-number {
         line-height: 1;
         font-variant-numeric: tabular-nums;
@@ -1058,6 +1116,24 @@
         color: #dbeafe;
       }
 
+      :root.dark .day-close-btn {
+        border-color: rgba(148, 163, 184, 0.34);
+        background: linear-gradient(
+          180deg,
+          rgba(15, 23, 42, 0.92) 0%,
+          rgba(30, 41, 59, 0.84) 100%
+        );
+        color: #f1f5f9;
+      }
+
+      :root.dark .day-close-btn:hover {
+        background: linear-gradient(
+          180deg,
+          rgba(30, 41, 59, 0.96) 0%,
+          rgba(51, 65, 85, 0.88) 100%
+        );
+      }
+
       :root.dark #github-link {
         box-shadow: 0 8px 20px rgba(2, 6, 23, 0.6);
       }
@@ -1122,6 +1198,13 @@
 
         .day-state-row {
           gap: 0.2rem;
+        }
+
+        .day-close-btn {
+          width: 1.2rem;
+          height: 1.2rem;
+          font-size: 0.64rem;
+          border-radius: 0.46rem;
         }
 
         #return-to-current,

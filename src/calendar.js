@@ -88,7 +88,6 @@ function createDayStateButton(state, isActive) {
   button.setAttribute("aria-pressed", String(isActive));
 
   if (state === "x") {
-    button.textContent = "X";
     button.setAttribute("aria-label", "Mark day as X");
     button.title = "X";
   } else {
@@ -175,6 +174,13 @@ function buildMonthCard(monthStart, getDayStateByKey, todayDayKey) {
         dayNumberLabel.textContent = String(dayNumber);
         dayCellContent.appendChild(dayNumberLabel);
 
+        const closeDayButton = document.createElement("button");
+        closeDayButton.type = "button";
+        closeDayButton.className = "day-close-btn";
+        closeDayButton.setAttribute("aria-label", "Close day details");
+        closeDayButton.title = "Close";
+        closeDayButton.textContent = "×";
+
         const dayStateRow = document.createElement("div");
         dayStateRow.className = "day-state-row";
 
@@ -183,8 +189,9 @@ function buildMonthCard(monthStart, getDayStateByKey, todayDayKey) {
           dayStateRow.appendChild(dayStateButton);
         });
 
-        dayCellContent.appendChild(dayStateRow);
         td.appendChild(dayCellContent);
+        td.appendChild(closeDayButton);
+        td.appendChild(dayStateRow);
 
         dayNumber += 1;
       }
@@ -782,6 +789,12 @@ export function initInfiniteCalendar(container) {
   });
 
   container.addEventListener("click", (event) => {
+    const closeDayButton = event.target.closest("button.day-close-btn");
+    if (closeDayButton && container.contains(closeDayButton)) {
+      clearSelectedDayCell();
+      return;
+    }
+
     const dayStateButton = event.target.closest("button.day-state-btn");
     if (dayStateButton && container.contains(dayStateButton)) {
       const dayCell = dayStateButton.closest("td.day-cell");
