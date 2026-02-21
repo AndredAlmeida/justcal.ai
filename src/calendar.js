@@ -15,6 +15,18 @@ const MIN_OTHER_ROW_HEIGHT_RATIO = 0.06;
 export const MIN_SELECTION_EXPANSION = 1;
 export const MAX_SELECTION_EXPANSION = 3;
 export const DEFAULT_SELECTION_EXPANSION = 1.68;
+export const MIN_CELL_EXPANSION_X = MIN_SELECTION_EXPANSION;
+export const MAX_CELL_EXPANSION_X = MAX_SELECTION_EXPANSION;
+export const DEFAULT_CELL_EXPANSION_X = DEFAULT_SELECTION_EXPANSION;
+export const MIN_CELL_EXPANSION_Y = MIN_SELECTION_EXPANSION;
+export const MAX_CELL_EXPANSION_Y = MAX_SELECTION_EXPANSION;
+export const DEFAULT_CELL_EXPANSION_Y = DEFAULT_SELECTION_EXPANSION;
+export const MIN_CELL_EXPANSION = MIN_CELL_EXPANSION_X;
+export const MAX_CELL_EXPANSION = MAX_CELL_EXPANSION_X;
+export const DEFAULT_CELL_EXPANSION = DEFAULT_CELL_EXPANSION_X;
+export const MIN_CAMERA_ZOOM = 1;
+export const MAX_CAMERA_ZOOM = 3;
+export const DEFAULT_CAMERA_ZOOM = 1.68;
 
 const DAY_STATE_STORAGE_KEY = "justcal-day-states";
 const DAY_STATES = ["x", "red", "yellow", "green"];
@@ -204,7 +216,9 @@ export function initInfiniteCalendar(container) {
   let latestMonth = currentMonth;
   let framePending = false;
   let selectedCell = null;
-  let selectionExpansion = DEFAULT_SELECTION_EXPANSION;
+  let cellExpansionX = DEFAULT_CELL_EXPANSION_X;
+  let cellExpansionY = DEFAULT_CELL_EXPANSION_Y;
+  let cameraZoom = DEFAULT_CAMERA_ZOOM;
   let fastScrollFrame = 0;
   let zoomResetTimer = 0;
   let zoomResetHandler = null;
@@ -306,7 +320,7 @@ export function initInfiniteCalendar(container) {
     table.style.height = `${totalHeight}px`;
 
     const requestedExpandedRowHeight =
-      bodyHeight * ((selectionExpansion * SELECTED_ROW_HEIGHT_MULTIPLIER) / rowCount);
+      bodyHeight * ((cellExpansionY * SELECTED_ROW_HEIGHT_MULTIPLIER) / rowCount);
     const minOtherRowHeight = bodyHeight * MIN_OTHER_ROW_HEIGHT_RATIO;
     const maxExpandedRowHeight = bodyHeight - minOtherRowHeight * (rowCount - 1);
     const expandedRowHeight = clamp(requestedExpandedRowHeight, 0, maxExpandedRowHeight);
@@ -317,7 +331,7 @@ export function initInfiniteCalendar(container) {
       row.style.height = `${idx === rowIndex ? expandedRowHeight : otherRowHeight}px`;
     });
 
-    const expandedColWidth = totalWidth * (selectionExpansion / colCount);
+    const expandedColWidth = totalWidth * (cellExpansionX / colCount);
     const otherColWidth = (totalWidth - expandedColWidth) / (colCount - 1);
 
     colEls.forEach((col, idx) => {
@@ -404,7 +418,7 @@ export function initInfiniteCalendar(container) {
     if (!cell || !cell.isConnected) return;
 
     clearCanvasZoom({ immediate: true });
-    const scale = clamp(selectionExpansion, MIN_SELECTION_EXPANSION, MAX_SELECTION_EXPANSION);
+    const scale = clamp(cameraZoom, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM);
     const containerRect = container.getBoundingClientRect();
     const cellRect = cell.getBoundingClientRect();
     const cellCenterX = cellRect.left - containerRect.left + cellRect.width / 2;
@@ -437,17 +451,65 @@ export function initInfiniteCalendar(container) {
     applyCanvasZoomForCell(selectedCell);
   }
 
-  function setSelectionExpansion(nextValue) {
+  function setCellExpansionX(nextValue) {
     const numericValue = Number(nextValue);
-    if (!Number.isFinite(numericValue)) return selectionExpansion;
+    if (!Number.isFinite(numericValue)) return cellExpansionX;
 
-    selectionExpansion = clamp(
+    cellExpansionX = clamp(
       numericValue,
-      MIN_SELECTION_EXPANSION,
-      MAX_SELECTION_EXPANSION,
+      MIN_CELL_EXPANSION_X,
+      MAX_CELL_EXPANSION_X,
     );
     reapplySelectionFocus();
-    return selectionExpansion;
+    return cellExpansionX;
+  }
+
+  function setCellExpansionY(nextValue) {
+    const numericValue = Number(nextValue);
+    if (!Number.isFinite(numericValue)) return cellExpansionY;
+
+    cellExpansionY = clamp(
+      numericValue,
+      MIN_CELL_EXPANSION_Y,
+      MAX_CELL_EXPANSION_Y,
+    );
+    reapplySelectionFocus();
+    return cellExpansionY;
+  }
+
+  function setCellExpansion(nextValue) {
+    const numericValue = Number(nextValue);
+    if (!Number.isFinite(numericValue)) return cellExpansionX;
+
+    cellExpansionX = clamp(
+      numericValue,
+      MIN_CELL_EXPANSION_X,
+      MAX_CELL_EXPANSION_X,
+    );
+    cellExpansionY = clamp(
+      numericValue,
+      MIN_CELL_EXPANSION_Y,
+      MAX_CELL_EXPANSION_Y,
+    );
+    reapplySelectionFocus();
+    return cellExpansionX;
+  }
+
+  function setCameraZoom(nextValue) {
+    const numericValue = Number(nextValue);
+    if (!Number.isFinite(numericValue)) return cameraZoom;
+
+    cameraZoom = clamp(
+      numericValue,
+      MIN_CAMERA_ZOOM,
+      MAX_CAMERA_ZOOM,
+    );
+    reapplySelectionFocus();
+    return cameraZoom;
+  }
+
+  function setSelectionExpansion(nextValue) {
+    return setCellExpansion(nextValue);
   }
 
   function clearSelectedDayCell() {
@@ -691,7 +753,15 @@ export function initInfiniteCalendar(container) {
   initialRender();
   return {
     scrollToPresentDay,
+    setCellExpansionX,
+    getCellExpansionX: () => cellExpansionX,
+    setCellExpansionY,
+    getCellExpansionY: () => cellExpansionY,
+    setCellExpansion,
+    getCellExpansion: () => cellExpansionX,
+    setCameraZoom,
+    getCameraZoom: () => cameraZoom,
     setSelectionExpansion,
-    getSelectionExpansion: () => selectionExpansion,
+    getSelectionExpansion: () => cellExpansionX,
   };
 }

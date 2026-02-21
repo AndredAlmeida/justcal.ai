@@ -481,7 +481,8 @@
       }
 
       #return-to-current,
-      #theme-toggle {
+      #theme-toggle,
+      #mobile-debug-toggle {
         width: 2.1rem;
         height: 2.1rem;
         display: inline-grid;
@@ -497,6 +498,20 @@
         box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
         cursor: pointer;
         transition: transform 0.15s ease;
+      }
+
+      #mobile-debug-toggle {
+        position: fixed;
+        left: 1rem;
+        bottom: 1rem;
+        width: auto;
+        min-width: 4.4rem;
+        padding: 0 0.72rem;
+        font-size: 0.64rem;
+        letter-spacing: 0.01em;
+        color: var(--ink);
+        z-index: 21;
+        display: none;
       }
 
       #github-link {
@@ -957,7 +972,8 @@
       }
 
       #return-to-current:hover,
-      #theme-toggle:hover {
+      #theme-toggle:hover,
+      #mobile-debug-toggle:hover {
         transform: translateY(-1px);
       }
 
@@ -967,7 +983,8 @@
       }
 
       #return-to-current:active,
-      #theme-toggle:active {
+      #theme-toggle:active,
+      #mobile-debug-toggle:active {
         transform: translateY(0);
       }
 
@@ -976,7 +993,8 @@
       }
 
       #return-to-current:focus-visible,
-      #theme-toggle:focus-visible {
+      #theme-toggle:focus-visible,
+      #mobile-debug-toggle:focus-visible {
         outline: 2px solid #3b82f6;
         outline-offset: 2px;
       }
@@ -1110,6 +1128,16 @@
           width: 2rem;
           height: 2rem;
           font-size: 0.98rem;
+        }
+
+        #mobile-debug-toggle {
+          display: inline-grid;
+          left: 0.75rem;
+          bottom: 0.75rem;
+          min-width: 3.75rem;
+          height: 2.05rem;
+          padding: 0 0.56rem;
+          font-size: 0.58rem;
         }
 
         #theme-switcher {
@@ -1252,17 +1280,45 @@
       </header>
       <section id="tweak-controls" aria-label="Day selection controls" hidden>
         <h2 class="tweak-controls-title">Debug Parameters</h2>
-        <label class="tweak-control" for="selection-expand">
-          <span>Expand</span>
+        <label class="tweak-control" for="selection-camera-zoom">
+          <span>Cell Zoom</span>
           <input
-            id="selection-expand"
+            id="selection-camera-zoom"
             type="range"
             min="1"
             max="3"
             step="0.05"
             value="1.68"
           />
-          <output id="selection-expand-value" for="selection-expand"
+          <output id="selection-camera-zoom-value" for="selection-camera-zoom"
+            >1.68x</output
+          >
+        </label>
+        <label class="tweak-control" for="selection-expand-x">
+          <span>Expand X</span>
+          <input
+            id="selection-expand-x"
+            type="range"
+            min="1"
+            max="3"
+            step="0.05"
+            value="1.68"
+          />
+          <output id="selection-expand-x-value" for="selection-expand-x"
+            >1.68x</output
+          >
+        </label>
+        <label class="tweak-control" for="selection-expand-y">
+          <span>Expand Y</span>
+          <input
+            id="selection-expand-y"
+            type="range"
+            min="1"
+            max="3"
+            step="0.05"
+            value="1.68"
+          />
+          <output id="selection-expand-y-value" for="selection-expand-y"
             >1.68x</output
           >
         </label>
@@ -1282,6 +1338,7 @@
         <polyline points="7.5 10.5 12 6 16.5 10.5" />
       </svg>
     </button>
+    <button id="mobile-debug-toggle" type="button">Debug</button>
     <div id="theme-switcher">
       <div id="theme-options" aria-label="Theme options">
         <p class="theme-options-title">Themes</p>

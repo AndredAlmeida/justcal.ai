@@ -7,6 +7,7 @@ const calendarContainer = document.getElementById("calendar-scroll");
 const headerCalendarsButton = document.getElementById("header-calendars-btn");
 const returnToCurrentButton = document.getElementById("return-to-current");
 const themeToggleButton = document.getElementById("theme-toggle");
+const mobileDebugToggleButton = document.getElementById("mobile-debug-toggle");
 
 const calendarApi = calendarContainer ? initInfiniteCalendar(calendarContainer) : null;
 
@@ -76,7 +77,14 @@ if (calendarContainer && returnToCurrentButton) {
 }
 
 setupTweakControls({
-  onSelectionExpansionChange: (nextExpansion) => {
-    calendarApi?.setSelectionExpansion(nextExpansion);
+  panelToggleButton: mobileDebugToggleButton,
+  onCellExpansionXChange: (nextExpansionX) => {
+    calendarApi?.setCellExpansionX(nextExpansionX);
+  },
+  onCellExpansionYChange: (nextExpansionY) => {
+    calendarApi?.setCellExpansionY(nextExpansionY);
+  },
+  onCameraZoomChange: (nextZoom) => {
+    calendarApi?.setCameraZoom(nextZoom);
   },
 });
