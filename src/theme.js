@@ -1,4 +1,5 @@
 const THEME_STORAGE_KEY = "justcal-theme";
+const THEME_BUTTON_LABEL = "Themes";
 const THEME_COLORS = {
   light: "#f8fafc",
   dark: "#020617",
@@ -25,9 +26,9 @@ function applyTheme({ theme, root, button, themeColorMeta }) {
   root.classList.toggle("dark", isDark);
   document.body.classList.toggle("dark", isDark);
 
-  const toggleLabel = isDark ? "Switch to light mode" : "Switch to dark mode";
-  button.setAttribute("aria-label", toggleLabel);
-  button.setAttribute("title", toggleLabel);
+  button.setAttribute("aria-label", THEME_BUTTON_LABEL);
+  button.setAttribute("data-tooltip", THEME_BUTTON_LABEL);
+  button.removeAttribute("title");
   button.setAttribute("aria-pressed", String(isDark));
 
   if (themeColorMeta) {

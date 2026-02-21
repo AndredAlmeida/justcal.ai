@@ -41,12 +41,14 @@
 
       html {
         background-color: var(--bg-bottom);
+        overflow: hidden;
       }
 
       body {
         margin: 0;
         min-height: 100vh;
         min-height: 100svh;
+        overflow: hidden;
         font-family: "Segoe UI", Arial, sans-serif;
         color: var(--ink);
         background-color: var(--bg-bottom);
@@ -74,11 +76,12 @@
         gap: 0.75rem;
       }
 
-      h1 {
-        margin: 0;
-        font-size: 1rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+      .brand-logo {
+        display: block;
+        width: auto;
+        height: 2rem;
+        max-width: min(68vw, 18rem);
+        object-fit: contain;
       }
 
       #tweak-controls {
@@ -442,6 +445,60 @@
         background: var(--muted);
       }
 
+      .tooltip-target {
+        position: relative;
+      }
+
+      .tooltip-target::after {
+        position: absolute;
+        left: 50%;
+        opacity: 0;
+        pointer-events: none;
+        z-index: 60;
+        transition:
+          opacity 0.18s ease,
+          transform 0.18s ease;
+      }
+
+      .tooltip-target::after {
+        content: attr(data-tooltip);
+        bottom: calc(100% + 0.56rem);
+        transform: translate(-50%, 4px);
+        padding: 0.34rem 0.48rem;
+        border-radius: 9px;
+        border: 1px solid rgba(148, 163, 184, 0.6);
+        background: rgba(15, 23, 42, 0.96);
+        color: #f8fafc;
+        white-space: nowrap;
+        font-size: 0.69rem;
+        line-height: 1;
+        font-weight: 600;
+        box-shadow: 0 8px 18px rgba(2, 6, 23, 0.35);
+        z-index: 61;
+      }
+
+      .tooltip-target:hover::after,
+      .tooltip-target:focus-visible::after {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+
+      .tooltip-target.tooltip-left::after {
+        left: auto;
+        bottom: auto;
+        top: 50%;
+      }
+
+      .tooltip-target.tooltip-left::after {
+        right: calc(100% + 0.56rem);
+        transform: translate(-4px, -50%);
+      }
+
+      .tooltip-target.tooltip-left:hover::after,
+      .tooltip-target.tooltip-left:focus-visible::after {
+        transform: translate(0, -50%);
+      }
+
       #panel-toggle svg,
       #return-to-current svg,
       #theme-toggle svg {
@@ -459,7 +516,7 @@
         stroke-linejoin: round;
       }
 
-      .moon-icon {
+      .theme-icon {
         width: 1rem;
         height: 1rem;
         display: block;
@@ -594,6 +651,11 @@
           font-size: 0.75rem;
         }
 
+        .brand-logo {
+          height: 1.8rem;
+          max-width: 70vw;
+        }
+
         .month-card {
           border-radius: 10px;
           padding: 0.55rem;
@@ -635,6 +697,10 @@
           font-size: 0.98rem;
         }
 
+        .tooltip-target::after {
+          font-size: 0.66rem;
+        }
+
         #github-link {
           right: 0.75rem;
           bottom: 0.75rem;
@@ -662,15 +728,22 @@
   <body>
     <div id="app">
       <header>
-        <h1>Just Calendar</h1>
+        <img class="brand-logo" src="/logo-top.png" alt="Just Calendar" />
         <button
           id="theme-toggle"
           type="button"
-          aria-label="Toggle dark mode"
-          title="Toggle dark mode"
+          aria-label="Themes"
+          class="tooltip-target tooltip-left"
+          data-tooltip="Themes"
         >
-          <svg class="moon-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79" />
+          <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M12 3.5c-4.97 0-9 3.8-9 8.5 0 2.9 2.35 5.25 5.25 5.25H10a1 1 0 0 1 1 1V20a1.5 1.5 0 0 0 1.5 1.5C17.2 21.5 21 17.7 21 13c0-5.25-4.03-9.5-9-9.5Z"
+            />
+            <circle cx="7.5" cy="11" r="0.9" fill="currentColor" />
+            <circle cx="10.5" cy="8.5" r="0.9" fill="currentColor" />
+            <circle cx="14" cy="8.3" r="0.9" fill="currentColor" />
+            <circle cx="16.5" cy="11" r="0.9" fill="currentColor" />
           </svg>
         </button>
       </header>
@@ -697,7 +770,8 @@
       id="return-to-current"
       type="button"
       aria-label="Back to current month"
-      title="Back to current month"
+      class="tooltip-target tooltip-left"
+      data-tooltip="Back to current month"
       aria-hidden="true"
     >
       <svg class="up-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -711,7 +785,8 @@
       aria-label="Show day expansion panel"
       aria-controls="tweak-controls"
       aria-expanded="false"
-      title="Show day expansion panel"
+      class="tooltip-target tooltip-left"
+      data-tooltip="Show day expansion panel"
     >
       <svg class="panel-icon" viewBox="0 0 24 24" aria-hidden="true">
         <line x1="4" y1="6" x2="20" y2="6" />
@@ -728,7 +803,8 @@
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Open justcal.ai on GitHub"
-      title="View on GitHub"
+      class="tooltip-target tooltip-left"
+      data-tooltip="View on GitHub"
     >
       <svg class="github-icon" viewBox="0 0 24 24" aria-hidden="true">
         <path
