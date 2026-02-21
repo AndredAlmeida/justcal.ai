@@ -1,8 +1,10 @@
 import { initInfiniteCalendar } from "./calendar.js";
+import { setupCalendarSwitcher } from "./calendars.js";
 import { setupTweakControls } from "./tweak-controls.js";
 import { setupThemeToggle } from "./theme.js";
 
 const calendarContainer = document.getElementById("calendar-scroll");
+const headerCalendarsButton = document.getElementById("header-calendars-btn");
 const returnToCurrentButton = document.getElementById("return-to-current");
 const themeToggleButton = document.getElementById("theme-toggle");
 
@@ -59,6 +61,10 @@ const jumpToPresentDay = () => {
 
 if (themeToggleButton) {
   setupThemeToggle(themeToggleButton);
+}
+
+if (headerCalendarsButton) {
+  setupCalendarSwitcher(headerCalendarsButton);
 }
 
 if (calendarContainer && returnToCurrentButton) {

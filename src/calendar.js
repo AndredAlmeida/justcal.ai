@@ -9,8 +9,6 @@ const LOAD_BATCH = 4;
 const TOP_THRESHOLD = 450;
 const BOTTOM_THRESHOLD = 650;
 const FAST_SCROLL_DURATION_MS = 380;
-const SELECTED_ROW_HEIGHT_MULTIPLIER = 1.5;
-const MIN_OTHER_ROW_HEIGHT_RATIO = 0.06;
 
 export const MIN_SELECTION_EXPANSION = 1;
 export const MAX_SELECTION_EXPANSION = 3;
@@ -195,7 +193,9 @@ export function initInfiniteCalendar(container) {
   const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const todayDayKey = formatDayKey(now.getFullYear(), now.getMonth(), now.getDate());
   const dayStatesByKey = loadDayStates();
-  const tableBaseLayoutMap = new WeakMap();
+  const calendarCanvas = document.createElement("div");
+  calendarCanvas.id = "calendar-canvas";
+  container.appendChild(calendarCanvas);
 
   let earliestMonth = currentMonth;
   let latestMonth = currentMonth;
@@ -203,6 +203,8 @@ export function initInfiniteCalendar(container) {
   let selectedCell = null;
   let selectionExpansion = DEFAULT_SELECTION_EXPANSION;
   let fastScrollFrame = 0;
+  let zoomResetTimer = 0;
+  let zoomResetHandler = null;
 
   function getDayStateByKey(dayKeyValue) {
     return normalizeDayState(dayStatesByKey[dayKeyValue]);
@@ -218,121 +220,107 @@ export function initInfiniteCalendar(container) {
     saveDayStates(dayStatesByKey);
   }
 
-  function getTableStructure(table) {
-    const bodyRows = Array.from(table.tBodies[0]?.rows ?? []);
-    const colEls = Array.from(table.querySelectorAll("colgroup col"));
-    if (bodyRows.length === 0 || colEls.length !== 7) return null;
-    return { bodyRows, colEls };
-  }
+  function getElementRectWithinCanvas(element) {
+    let left = 0;
+    let top = 0;
+    let current = element;
 
-  function readTableBaseLayout(table) {
-    const totalHeight = table.offsetHeight;
-    const headHeight = table.tHead?.offsetHeight ?? 0;
-    const bodyHeight = Math.max(totalHeight - headHeight, 0);
-    const totalWidth = table.clientWidth;
-    return { totalHeight, bodyHeight, totalWidth };
-  }
-
-  function ensureTableBaseLayout(table, structure, { refreshBase = false } = {}) {
-    if (!refreshBase) {
-      const cachedLayout = tableBaseLayoutMap.get(table);
-      if (cachedLayout) return cachedLayout;
+    while (current && current !== calendarCanvas) {
+      left += current.offsetLeft;
+      top += current.offsetTop;
+      current = current.offsetParent;
     }
 
-    table.style.height = "";
-    structure.bodyRows.forEach((row) => {
-      row.style.height = "";
-      row.classList.remove("selected-row");
-    });
-    structure.colEls.forEach((col) => {
-      col.style.width = "";
-    });
-    table.classList.remove("has-selected-day");
+    if (current === calendarCanvas) {
+      return {
+        left,
+        top,
+        width: element.offsetWidth,
+        height: element.offsetHeight,
+      };
+    }
 
-    const nextBaseLayout = readTableBaseLayout(table);
-    tableBaseLayoutMap.set(table, nextBaseLayout);
-    return nextBaseLayout;
+    const elementRect = element.getBoundingClientRect();
+    const canvasRect = calendarCanvas.getBoundingClientRect();
+    return {
+      left: elementRect.left - canvasRect.left,
+      top: elementRect.top - canvasRect.top,
+      width: elementRect.width,
+      height: elementRect.height,
+    };
   }
 
-  function applyDefaultTableLayout(table, options = {}) {
-    const structure = getTableStructure(table);
-    if (!structure) return;
-
-    const baseLayout = ensureTableBaseLayout(table, structure, options);
-    const { bodyRows, colEls } = structure;
-    const { totalHeight, bodyHeight, totalWidth } = baseLayout;
-
-    table.style.height = `${totalHeight}px`;
-
-    const defaultRowHeight = bodyHeight / bodyRows.length;
-    bodyRows.forEach((row) => {
-      row.style.height = `${defaultRowHeight}px`;
-      row.classList.remove("selected-row");
-    });
-
-    const defaultColWidth = totalWidth / colEls.length;
-    colEls.forEach((col) => {
-      col.style.width = `${defaultColWidth}px`;
-    });
-
-    table.classList.remove("has-selected-day");
-    table.dataset.layoutReady = "1";
+  function cleanupZoomResetListeners() {
+    if (zoomResetTimer) {
+      clearTimeout(zoomResetTimer);
+      zoomResetTimer = 0;
+    }
+    if (zoomResetHandler) {
+      calendarCanvas.removeEventListener("transitionend", zoomResetHandler);
+      zoomResetHandler = null;
+    }
   }
 
-  function applyDefaultLayoutForCards(cards, options = {}) {
-    cards.forEach((card) => {
-      const table = card.querySelector("table");
-      if (table) applyDefaultTableLayout(table, options);
+  function clearCanvasZoom({ immediate = false } = {}) {
+    cleanupZoomResetListeners();
+    container.classList.remove("is-zoomed");
+
+    const finishReset = () => {
+      cleanupZoomResetListeners();
+      calendarCanvas.style.transformOrigin = "";
+      calendarCanvas.style.transform = "";
+    };
+
+    if (immediate) {
+      finishReset();
+      return;
+    }
+
+    if (!calendarCanvas.style.transform) {
+      finishReset();
+      return;
+    }
+
+    zoomResetHandler = (event) => {
+      if (event.target !== calendarCanvas || event.propertyName !== "transform") {
+        return;
+      }
+      finishReset();
+    };
+    calendarCanvas.addEventListener("transitionend", zoomResetHandler);
+    calendarCanvas.style.transform = "translate(0px, 0px) scale(1)";
+    zoomResetTimer = window.setTimeout(finishReset, 300);
+  }
+
+  function applyCanvasZoomForCell(cell) {
+    if (!cell || !cell.isConnected) return;
+
+    clearCanvasZoom({ immediate: true });
+    const scale = clamp(selectionExpansion, MIN_SELECTION_EXPANSION, MAX_SELECTION_EXPANSION);
+    const containerRect = container.getBoundingClientRect();
+    const cellRect = cell.getBoundingClientRect();
+    const cellCenterX = cellRect.left - containerRect.left + cellRect.width / 2;
+    const cellCenterY = cellRect.top - containerRect.top + cellRect.height / 2;
+    const targetX = container.clientWidth / 2 - cellCenterX;
+    const targetY = container.clientHeight / 2 - cellCenterY;
+
+    requestAnimationFrame(() => {
+      if (!cell.isConnected || selectedCell !== cell) return;
+      const rect = getElementRectWithinCanvas(cell);
+      if (!rect) return;
+
+      const originX = rect.left + rect.width / 2;
+      const originY = rect.top + rect.height / 2;
+
+      container.classList.add("is-zoomed");
+      calendarCanvas.style.transformOrigin = `${originX}px ${originY}px`;
+      calendarCanvas.style.transform = `translate(${targetX}px, ${targetY}px) scale(${scale})`;
     });
   }
 
-  function clearTableSelectionLayout(table) {
-    applyDefaultTableLayout(table);
-  }
-
-  function applyTableSelectionLayout(table, rowIndex, colIndex) {
-    const structure = getTableStructure(table);
-    if (!structure) return;
-    const baseLayout = ensureTableBaseLayout(table, structure);
-    const { bodyRows, colEls } = structure;
-    const { totalHeight, bodyHeight, totalWidth } = baseLayout;
-    const rowCount = bodyRows.length;
-    const colCount = colEls.length;
-    table.style.height = `${totalHeight}px`;
-
-    const requestedExpandedRowHeight =
-      bodyHeight * ((selectionExpansion * SELECTED_ROW_HEIGHT_MULTIPLIER) / rowCount);
-    const minOtherRowHeight = bodyHeight * MIN_OTHER_ROW_HEIGHT_RATIO;
-    const maxExpandedRowHeight = bodyHeight - minOtherRowHeight * (rowCount - 1);
-    const expandedRowHeight = clamp(requestedExpandedRowHeight, 0, maxExpandedRowHeight);
-    const otherRowHeight = (bodyHeight - expandedRowHeight) / (rowCount - 1);
-
-    bodyRows.forEach((row, idx) => {
-      row.classList.toggle("selected-row", idx === rowIndex);
-      row.style.height = `${idx === rowIndex ? expandedRowHeight : otherRowHeight}px`;
-    });
-
-    const expandedColWidth = totalWidth * (selectionExpansion / colCount);
-    const otherColWidth = (totalWidth - expandedColWidth) / (colCount - 1);
-
-    colEls.forEach((col, idx) => {
-      col.style.width = `${idx === colIndex ? expandedColWidth : otherColWidth}px`;
-    });
-
-    table.classList.add("has-selected-day");
-    table.dataset.layoutReady = "1";
-  }
-
-  function reapplySelectionLayout() {
+  function reapplySelectionZoom() {
     if (!selectedCell || !selectedCell.isConnected) return;
-    const table = selectedCell.closest("table");
-    const rowIndex = Number(selectedCell.parentElement?.dataset.rowIndex ?? -1);
-    const colIndex = Number(selectedCell.dataset.colIndex ?? -1);
-    if (table && rowIndex >= 0 && colIndex >= 0) {
-      requestAnimationFrame(() => {
-        applyTableSelectionLayout(table, rowIndex, colIndex);
-      });
-    }
+    applyCanvasZoomForCell(selectedCell);
   }
 
   function setSelectionExpansion(nextValue) {
@@ -344,7 +332,7 @@ export function initInfiniteCalendar(container) {
       MIN_SELECTION_EXPANSION,
       MAX_SELECTION_EXPANSION,
     );
-    reapplySelectionLayout();
+    reapplySelectionZoom();
     return selectionExpansion;
   }
 
@@ -354,64 +342,43 @@ export function initInfiniteCalendar(container) {
     const previousCell = selectedCell;
     selectedCell = null;
     previousCell.classList.remove("selected-day");
-
-    const previousTable = previousCell.closest("table");
-    if (previousTable) {
-      clearTableSelectionLayout(previousTable);
-    }
+    clearCanvasZoom();
 
     return true;
   }
 
   function selectDayCell(cell) {
-    clearSelectedDayCell();
-
+    if (selectedCell === cell) return;
+    if (selectedCell) {
+      selectedCell.classList.remove("selected-day");
+    }
     selectedCell = cell;
     selectedCell.classList.add("selected-day");
-
-    const table = selectedCell.closest("table");
-    const rowIndex = Number(selectedCell.parentElement?.dataset.rowIndex ?? -1);
-    const colIndex = Number(selectedCell.dataset.colIndex ?? -1);
-    if (table && rowIndex >= 0 && colIndex >= 0) {
-      if (table.dataset.layoutReady !== "1") {
-        applyDefaultTableLayout(table);
-        // Force style flush so next frame transitions from explicit default sizes.
-        table.getBoundingClientRect();
-      }
-      requestAnimationFrame(() => {
-        applyTableSelectionLayout(table, rowIndex, colIndex);
-      });
-    }
+    applyCanvasZoomForCell(selectedCell);
   }
 
   function appendFutureMonths(count) {
     const fragment = document.createDocumentFragment();
-    const addedCards = [];
     for (let i = 1; i <= count; i += 1) {
       const card = buildMonthCard(shiftMonth(latestMonth, i), getDayStateByKey, todayDayKey);
-      addedCards.push(card);
       fragment.appendChild(card);
     }
     latestMonth = shiftMonth(latestMonth, count);
-    container.appendChild(fragment);
-    applyDefaultLayoutForCards(addedCards, { refreshBase: true });
+    calendarCanvas.appendChild(fragment);
   }
 
   function prependPastMonths(count) {
     const beforeHeight = container.scrollHeight;
     const beforeTop = container.scrollTop;
     const fragment = document.createDocumentFragment();
-    const addedCards = [];
 
     for (let i = count; i >= 1; i -= 1) {
       const card = buildMonthCard(shiftMonth(earliestMonth, -i), getDayStateByKey, todayDayKey);
-      addedCards.push(card);
       fragment.appendChild(card);
     }
 
     earliestMonth = shiftMonth(earliestMonth, -count);
-    container.insertBefore(fragment, container.firstChild);
-    applyDefaultLayoutForCards(addedCards, { refreshBase: true });
+    calendarCanvas.insertBefore(fragment, calendarCanvas.firstChild);
 
     const addedHeight = container.scrollHeight - beforeHeight;
     container.scrollTop = beforeTop + addedHeight;
@@ -484,6 +451,8 @@ export function initInfiniteCalendar(container) {
   }
 
   function scrollToPresentDay({ animate = true } = {}) {
+    clearSelectedDayCell();
+
     const nowDate = new Date();
     const presentMonth = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1);
     ensureMonthRendered(presentMonth);
@@ -504,7 +473,7 @@ export function initInfiniteCalendar(container) {
     for (let i = -INITIAL_MONTH_SPAN; i <= INITIAL_MONTH_SPAN; i += 1) {
       fragment.appendChild(buildMonthCard(shiftMonth(currentMonth, i), getDayStateByKey, todayDayKey));
     }
-    container.appendChild(fragment);
+    calendarCanvas.appendChild(fragment);
 
     earliestMonth = shiftMonth(currentMonth, -INITIAL_MONTH_SPAN);
     latestMonth = shiftMonth(currentMonth, INITIAL_MONTH_SPAN);
@@ -517,8 +486,6 @@ export function initInfiniteCalendar(container) {
     }
 
     maybeLoadMoreMonths();
-    const initialCards = Array.from(container.querySelectorAll(".month-card"));
-    applyDefaultLayoutForCards(initialCards, { refreshBase: true });
     scrollToPresentDay({ animate: false });
   }
 
@@ -553,9 +520,7 @@ export function initInfiniteCalendar(container) {
   });
 
   window.addEventListener("resize", () => {
-    const cards = Array.from(container.querySelectorAll(".month-card"));
-    applyDefaultLayoutForCards(cards, { refreshBase: true });
-    reapplySelectionLayout();
+    reapplySelectionZoom();
   });
 
   window.addEventListener("keydown", (event) => {
