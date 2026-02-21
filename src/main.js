@@ -3,7 +3,6 @@ import { setupTweakControls } from "./tweak-controls.js";
 import { setupThemeToggle } from "./theme.js";
 
 const calendarContainer = document.getElementById("calendar-scroll");
-const panelToggleButton = document.getElementById("panel-toggle");
 const returnToCurrentButton = document.getElementById("return-to-current");
 const themeToggleButton = document.getElementById("theme-toggle");
 
@@ -71,7 +70,6 @@ if (calendarContainer && returnToCurrentButton) {
 }
 
 setupTweakControls({
-  panelToggleButton,
   onSelectionExpansionChange: (nextExpansion) => {
     calendarApi?.setSelectionExpansion(nextExpansion);
   },

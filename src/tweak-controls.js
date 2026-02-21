@@ -29,14 +29,43 @@ function saveSelectionExpansion(value) {
   }
 }
 
+function isTypingTarget(target) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target.isContentEditable) {
+    return true;
+  }
+  return Boolean(target.closest("input, textarea, select"));
+}
+
+function animatePanelEntry(panel) {
+  panel.classList.remove("is-entering");
+  panel.classList.add("is-entering");
+  // Force reflow, then remove the class on the next frame so it animates upward.
+  void panel.offsetWidth;
+  requestAnimationFrame(() => {
+    panel.classList.remove("is-entering");
+  });
+}
+
 function setPanelExpandedState(button, panel, isExpanded) {
-  if (!button || !panel) return;
-  panel.hidden = !isExpanded;
+  if (!panel) return;
+
+  if (isExpanded) {
+    panel.hidden = false;
+    animatePanelEntry(panel);
+  } else {
+    panel.classList.remove("is-entering");
+    panel.hidden = true;
+  }
 
   const panelAction = isExpanded ? "Hide" : "Show";
-  button.setAttribute("aria-expanded", String(isExpanded));
-  button.setAttribute("aria-label", `${panelAction} day expansion panel`);
-  button.setAttribute("title", `${panelAction} day expansion panel`);
+  if (button) {
+    button.setAttribute("aria-expanded", String(isExpanded));
+    button.setAttribute("aria-label", `${panelAction} developer controls`);
+    button.setAttribute("title", `${panelAction} developer controls`);
+  }
 }
 
 export function setupTweakControls({
@@ -48,9 +77,28 @@ export function setupTweakControls({
   const expansionOutput = document.getElementById("selection-expand-value");
 
   setPanelExpandedState(panelToggleButton, controlsPanel, false);
+  const toggleControlsPanel = () => {
+    if (!controlsPanel) return;
+    setPanelExpandedState(
+      panelToggleButton,
+      controlsPanel,
+      controlsPanel.hidden,
+    );
+  };
+
   if (panelToggleButton && controlsPanel) {
-    panelToggleButton.addEventListener("click", () => {
-      setPanelExpandedState(panelToggleButton, controlsPanel, controlsPanel.hidden);
+    panelToggleButton.addEventListener("click", toggleControlsPanel);
+  }
+
+  if (controlsPanel) {
+    document.addEventListener("keydown", (event) => {
+      if (event.defaultPrevented || event.repeat) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key.toLowerCase() !== "p") return;
+      if (isTypingTarget(event.target)) return;
+
+      event.preventDefault();
+      toggleControlsPanel();
     });
   }
 

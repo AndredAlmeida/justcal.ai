@@ -123,9 +123,10 @@
       }
 
       #theme-switcher {
-        margin-left: auto;
-        position: relative;
-        z-index: 44;
+        position: fixed;
+        right: 1rem;
+        bottom: 3.9rem;
+        z-index: 21;
         display: flex;
         align-items: center;
         justify-content: flex-end;
@@ -134,7 +135,7 @@
 
       #tweak-controls {
         width: min(920px, calc(100% - 1.3rem));
-        margin: 0.7rem auto 0;
+        margin: 0 auto;
         padding: 0.6rem 0.75rem;
         border: 1px solid var(--line);
         border-radius: 12px;
@@ -142,6 +143,21 @@
         box-shadow: var(--card-shadow);
         display: grid;
         gap: 0.45rem;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 0.55rem);
+        z-index: 120;
+        transform: translateY(0);
+        opacity: 1;
+        transition:
+          transform 0.24s cubic-bezier(0.22, 0.61, 0.36, 1),
+          opacity 0.2s ease;
+      }
+
+      #tweak-controls.is-entering {
+        opacity: 0;
+        transform: translateY(calc(100% + 1.5rem));
       }
 
       #tweak-controls[hidden] {
@@ -412,7 +428,6 @@
         color: #0b2840;
       }
 
-      #panel-toggle,
       #return-to-current,
       #theme-toggle {
         width: 2.1rem;
@@ -452,13 +467,6 @@
           box-shadow 0.15s ease;
       }
 
-      #panel-toggle {
-        position: fixed;
-        right: 1rem;
-        bottom: 3.9rem;
-        z-index: 21;
-      }
-
       #return-to-current {
         position: fixed;
         right: max(0.25rem, calc((100vw - 920px) / 2 - 2.6rem));
@@ -494,8 +502,9 @@
       #theme-options {
         position: absolute;
         right: 0;
-        top: calc(100% + 0.42rem);
-        transform: translateY(-0.28rem);
+        top: auto;
+        bottom: calc(100% + 0.42rem);
+        transform: translateY(0.28rem);
         display: flex;
         flex-direction: column;
         align-items: stretch;
@@ -570,10 +579,6 @@
         background: var(--muted);
       }
 
-      #panel-toggle[aria-expanded="true"] {
-        background: var(--muted);
-      }
-
       .tooltip-target {
         position: relative;
       }
@@ -595,15 +600,19 @@
         transform: translate(-50%, 4px);
         padding: 0.34rem 0.48rem;
         border-radius: 9px;
-        border: 1px solid rgba(148, 163, 184, 0.6);
-        background: rgba(15, 23, 42, 0.96);
-        color: #f8fafc;
+        border: 0;
+        background: rgba(71, 85, 105, 0.3);
+        color: rgba(248, 250, 252, 0.4);
         white-space: nowrap;
         font-size: 0.69rem;
         line-height: 1;
         font-weight: 600;
         box-shadow: 0 8px 18px rgba(2, 6, 23, 0.35);
         z-index: 61;
+      }
+
+      :root:not(.dark) .tooltip-target::after {
+        color: rgba(15, 23, 42, 0.72);
       }
 
       .tooltip-target:hover::after,
@@ -628,21 +637,9 @@
         transform: translate(0, -50%);
       }
 
-      #panel-toggle svg,
       #return-to-current svg,
       #theme-toggle svg {
         pointer-events: none;
-      }
-
-      .panel-icon {
-        width: 1rem;
-        height: 1rem;
-        display: block;
-        fill: none;
-        stroke: currentColor;
-        stroke-width: 1.7;
-        stroke-linecap: round;
-        stroke-linejoin: round;
       }
 
       .theme-icon {
@@ -691,7 +688,6 @@
         transform: rotate(180deg);
       }
 
-      #panel-toggle:hover,
       #return-to-current:hover,
       #theme-toggle:hover {
         transform: translateY(-1px);
@@ -702,7 +698,6 @@
         box-shadow: 0 10px 22px rgba(15, 23, 42, 0.24);
       }
 
-      #panel-toggle:active,
       #return-to-current:active,
       #theme-toggle:active {
         transform: translateY(0);
@@ -712,7 +707,6 @@
         transform: translateY(0);
       }
 
-      #panel-toggle:focus-visible,
       #return-to-current:focus-visible,
       #theme-toggle:focus-visible {
         outline: 2px solid #3b82f6;
@@ -789,8 +783,8 @@
 
         #tweak-controls {
           width: calc(100% - 1.3rem);
-          margin-top: 0.6rem;
           padding: 0.55rem 0.6rem;
+          bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
         }
 
         .tweak-control {
@@ -837,7 +831,6 @@
           gap: 0.2rem;
         }
 
-        #panel-toggle,
         #return-to-current,
         #theme-toggle {
           width: 2rem;
@@ -846,6 +839,8 @@
         }
 
         #theme-switcher {
+          right: 0.75rem;
+          bottom: 3.2rem;
           min-width: 2rem;
         }
 
@@ -871,11 +866,6 @@
           height: 2.05rem;
         }
 
-        #panel-toggle {
-          right: 0.75rem;
-          bottom: 3.2rem;
-        }
-
         #return-to-current {
           right: 0.75rem;
           top: calc(env(safe-area-inset-top, 0px) + 4.4rem);
@@ -892,72 +882,6 @@
     <div id="app">
       <header>
         <img class="brand-logo" src="/logo-top.png" alt="Just Calendar" />
-        <div id="theme-switcher">
-          <div id="theme-options" aria-label="Theme options">
-            <button
-              type="button"
-              class="theme-option"
-              data-theme-option="dark"
-              aria-label="Dark Theme"
-            >
-              Dark Theme
-            </button>
-            <button
-              type="button"
-              class="theme-option"
-              data-theme-option="tokyo-night-storm"
-              aria-label="Tokyo Night Storm"
-            >
-              Tokyo Night Storm
-            </button>
-            <button
-              type="button"
-              class="theme-option"
-              data-theme-option="solarized-dark"
-              aria-label="Solarized Dark"
-            >
-              Solarized Dark
-            </button>
-            <button
-              type="button"
-              class="theme-option"
-              data-theme-option="solarized-light"
-              aria-label="Solarized Light"
-            >
-              Solarized Light
-            </button>
-            <button
-              type="button"
-              class="theme-option"
-              data-theme-option="light"
-              aria-label="Light Theme"
-            >
-              Light Theme
-            </button>
-          </div>
-          <button
-            id="theme-toggle"
-            type="button"
-            aria-label="Themes"
-            aria-expanded="false"
-            class="tooltip-target tooltip-left"
-            data-tooltip="Themes"
-          >
-            <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M12 3.5c-4.97 0-9 3.8-9 8.5 0 2.9 2.35 5.25 5.25 5.25H10a1 1 0 0 1 1 1V20a1.5 1.5 0 0 0 1.5 1.5C17.2 21.5 21 17.7 21 13c0-5.25-4.03-9.5-9-9.5Z"
-              />
-              <circle cx="7.5" cy="11" r="0.9" fill="currentColor" />
-              <circle cx="10.5" cy="8.5" r="0.9" fill="currentColor" />
-              <circle cx="14" cy="8.3" r="0.9" fill="currentColor" />
-              <circle cx="16.5" cy="11" r="0.9" fill="currentColor" />
-            </svg>
-            <svg class="close-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <line x1="6.5" y1="6.5" x2="17.5" y2="17.5" />
-              <line x1="17.5" y1="6.5" x2="6.5" y2="17.5" />
-            </svg>
-          </button>
-        </div>
       </header>
       <section id="tweak-controls" aria-label="Day selection controls" hidden>
         <h2 class="tweak-controls-title">Debug Parameters</h2>
@@ -991,24 +915,72 @@
         <polyline points="7.5 10.5 12 6 16.5 10.5" />
       </svg>
     </button>
-    <button
-      id="panel-toggle"
-      type="button"
-      aria-label="Show day expansion panel"
-      aria-controls="tweak-controls"
-      aria-expanded="false"
-      class="tooltip-target tooltip-left"
-      data-tooltip="Show day expansion panel"
-    >
-      <svg class="panel-icon" viewBox="0 0 24 24" aria-hidden="true">
-        <line x1="4" y1="6" x2="20" y2="6" />
-        <circle cx="9" cy="6" r="1.8" />
-        <line x1="4" y1="12" x2="20" y2="12" />
-        <circle cx="14" cy="12" r="1.8" />
-        <line x1="4" y1="18" x2="20" y2="18" />
-        <circle cx="11" cy="18" r="1.8" />
-      </svg>
-    </button>
+    <div id="theme-switcher">
+      <div id="theme-options" aria-label="Theme options">
+        <button
+          type="button"
+          class="theme-option"
+          data-theme-option="dark"
+          aria-label="Dark Theme"
+        >
+          Dark Theme
+        </button>
+        <button
+          type="button"
+          class="theme-option"
+          data-theme-option="tokyo-night-storm"
+          aria-label="Tokyo Night Storm"
+        >
+          Tokyo Night Storm
+        </button>
+        <button
+          type="button"
+          class="theme-option"
+          data-theme-option="solarized-dark"
+          aria-label="Solarized Dark"
+        >
+          Solarized Dark
+        </button>
+        <button
+          type="button"
+          class="theme-option"
+          data-theme-option="solarized-light"
+          aria-label="Solarized Light"
+        >
+          Solarized Light
+        </button>
+        <button
+          type="button"
+          class="theme-option"
+          data-theme-option="light"
+          aria-label="Light Theme"
+        >
+          Light Theme
+        </button>
+      </div>
+      <button
+        id="theme-toggle"
+        type="button"
+        aria-label="Open Themes"
+        aria-expanded="false"
+        class="tooltip-target tooltip-left"
+        data-tooltip="Open Themes"
+      >
+        <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M12 3.5c-4.97 0-9 3.8-9 8.5 0 2.9 2.35 5.25 5.25 5.25H10a1 1 0 0 1 1 1V20a1.5 1.5 0 0 0 1.5 1.5C17.2 21.5 21 17.7 21 13c0-5.25-4.03-9.5-9-9.5Z"
+          />
+          <circle cx="7.5" cy="11" r="0.9" fill="currentColor" />
+          <circle cx="10.5" cy="8.5" r="0.9" fill="currentColor" />
+          <circle cx="14" cy="8.3" r="0.9" fill="currentColor" />
+          <circle cx="16.5" cy="11" r="0.9" fill="currentColor" />
+        </svg>
+        <svg class="close-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <line x1="6.5" y1="6.5" x2="17.5" y2="17.5" />
+          <line x1="17.5" y1="6.5" x2="6.5" y2="17.5" />
+        </svg>
+      </button>
+    </div>
     <a
       id="github-link"
       href="https://github.com/AndredAlmeida/justcal.ai"

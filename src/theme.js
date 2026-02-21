@@ -1,5 +1,5 @@
 const THEME_STORAGE_KEY = "justcal-theme";
-const THEME_BUTTON_LABEL = "Themes";
+const THEME_BUTTON_LABEL = "Open Themes";
 const THEME_CLOSE_LABEL = "Close themes";
 const TOKYO_NIGHT_STORM_THEME = "tokyo-night-storm";
 const DEFAULT_THEME = TOKYO_NIGHT_STORM_THEME;
