@@ -1035,6 +1035,24 @@
           transform 0.18s ease;
       }
 
+      .calendar-edit-form,
+      .calendar-delete-confirm {
+        display: grid;
+        gap: 0.38rem;
+      }
+
+      .calendar-delete-confirm {
+        display: none;
+      }
+
+      .calendar-edit-editor.is-delete-confirming .calendar-edit-form {
+        display: none;
+      }
+
+      .calendar-edit-editor.is-delete-confirming .calendar-delete-confirm {
+        display: grid;
+      }
+
       .calendar-add-panel {
         display: grid;
         gap: 0.38rem;
@@ -1252,6 +1270,109 @@
       .calendar-action-btn:active {
         background: var(--calendar-action-bg-active);
         border-color: var(--calendar-action-border);
+      }
+
+      .calendar-edit-actions {
+        grid-template-columns: 1fr 1fr auto;
+      }
+
+      .calendar-edit-actions .calendar-option {
+        width: 100%;
+      }
+
+      .calendar-edit-actions .calendar-action-btn {
+        min-height: 1.74rem;
+        height: 1.74rem;
+        padding: 0 0.68rem;
+        font-size: 0.62rem;
+      }
+
+      .calendar-edit-delete-btn {
+        width: 1.3rem;
+        min-width: 1.3rem;
+        padding: 0;
+        display: inline-grid;
+        place-items: center;
+        background: color-mix(in srgb, var(--calendar-action-bg) 84%, #ef4444 16%);
+        border-color: color-mix(in srgb, var(--calendar-action-border) 72%, #ef4444 28%);
+        color: #ffffff;
+      }
+
+      .calendar-edit-delete-btn:hover {
+        background: color-mix(in srgb, var(--calendar-action-bg-hover) 74%, #ef4444 26%);
+        border-color: color-mix(in srgb, var(--calendar-action-border) 60%, #ef4444 40%);
+      }
+
+      .calendar-edit-delete-btn:active {
+        background: color-mix(in srgb, var(--calendar-action-bg-active) 66%, #ef4444 34%);
+        border-color: color-mix(in srgb, var(--calendar-action-border) 52%, #ef4444 48%);
+      }
+
+      .calendar-edit-delete-icon {
+        width: 0.84rem;
+        height: 0.84rem;
+        display: block;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.9;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        pointer-events: none;
+      }
+
+      .calendar-edit-delete-btn:disabled {
+        opacity: 0.46;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .calendar-delete-panel {
+        gap: 0.52rem;
+      }
+
+      .calendar-delete-message {
+        margin: 0.04rem 0 0.08rem;
+        font-size: 0.68rem;
+        font-weight: 700;
+        line-height: 1.4;
+        text-align: center;
+        color: color-mix(in srgb, var(--ink) 92%, #ffffff 8%);
+      }
+
+      .calendar-delete-name {
+        font-weight: 800;
+      }
+
+      .calendar-delete-actions {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .calendar-delete-remove-btn {
+        background: color-mix(in srgb, var(--calendar-action-bg) 68%, #ef4444 32%);
+        border-color: color-mix(
+          in srgb,
+          var(--calendar-action-border) 58%,
+          #ef4444 42%
+        );
+        color: #ffffff;
+      }
+
+      .calendar-delete-remove-btn:hover {
+        background: color-mix(in srgb, var(--calendar-action-bg-hover) 58%, #ef4444 42%);
+        border-color: color-mix(
+          in srgb,
+          var(--calendar-action-border) 48%,
+          #ef4444 52%
+        );
+      }
+
+      .calendar-delete-remove-btn:active {
+        background: color-mix(in srgb, var(--calendar-action-bg-active) 50%, #ef4444 50%);
+        border-color: color-mix(
+          in srgb,
+          var(--calendar-action-border) 42%,
+          #ef4444 58%
+        );
       }
 
       #calendar-switcher.is-expanded #header-calendars-btn {
@@ -1719,6 +1840,17 @@
           height: 1.85rem;
         }
 
+        .calendar-edit-actions .calendar-action-btn {
+          height: 1.68rem;
+          min-height: 1.68rem;
+          font-size: 0.58rem;
+        }
+
+        .calendar-edit-delete-btn {
+          width: 1.46rem;
+          min-width: 1.46rem;
+        }
+
         .tooltip-target::after {
           font-size: 0.66rem;
         }
@@ -1933,123 +2065,187 @@
                 class="calendar-edit-editor"
                 aria-label="Edit Calendar"
               >
-                <div class="calendar-add-panel">
-                  <p class="calendar-add-title">Edit Calendar</p>
-                  <label class="calendar-add-field" for="edit-calendar-name">
-                    <span class="calendar-add-field-label">Name</span>
-                    <input
-                      id="edit-calendar-name"
-                      class="calendar-add-input"
-                      type="text"
-                      placeholder="Calendar name"
-                      autocomplete="off"
-                    />
-                  </label>
-                  <div class="calendar-add-field" aria-label="Color">
-                    <span class="calendar-add-field-label">Color</span>
-                    <div
-                      id="edit-calendar-color"
-                      class="calendar-add-color-options"
-                      role="radiogroup"
-                      aria-label="Calendar color"
-                    >
-                      <button
-                        type="button"
-                        class="calendar-color-option"
-                        data-color="gray"
-                        aria-label="Gray"
-                        aria-pressed="false"
+                <div id="calendar-edit-form" class="calendar-edit-form" aria-hidden="false">
+                  <div class="calendar-add-panel">
+                    <p class="calendar-add-title">Edit Calendar</p>
+                    <label class="calendar-add-field" for="edit-calendar-name">
+                      <span class="calendar-add-field-label">Name</span>
+                      <input
+                        id="edit-calendar-name"
+                        class="calendar-add-input"
+                        type="text"
+                        placeholder="Calendar name"
+                        autocomplete="off"
+                      />
+                    </label>
+                    <div class="calendar-add-field" aria-label="Color">
+                      <span class="calendar-add-field-label">Color</span>
+                      <div
+                        id="edit-calendar-color"
+                        class="calendar-add-color-options"
+                        role="radiogroup"
+                        aria-label="Calendar color"
                       >
-                        <span
-                          class="calendar-color-dot"
-                          style="--color-dot: #9ca3af"
-                          aria-hidden="true"
-                        ></span>
+                        <button
+                          type="button"
+                          class="calendar-color-option"
+                          data-color="gray"
+                          aria-label="Gray"
+                          aria-pressed="false"
+                        >
+                          <span
+                            class="calendar-color-dot"
+                            style="--color-dot: #9ca3af"
+                            aria-hidden="true"
+                          ></span>
+                        </button>
+                        <button
+                          type="button"
+                          class="calendar-color-option"
+                          data-color="red"
+                          aria-label="Red"
+                          aria-pressed="false"
+                        >
+                          <span
+                            class="calendar-color-dot"
+                            style="--color-dot: #ef4444"
+                            aria-hidden="true"
+                          ></span>
+                        </button>
+                        <button
+                          type="button"
+                          class="calendar-color-option"
+                          data-color="orange"
+                          aria-label="Orange"
+                          aria-pressed="false"
+                        >
+                          <span
+                            class="calendar-color-dot"
+                            style="--color-dot: #f97316"
+                            aria-hidden="true"
+                          ></span>
+                        </button>
+                        <button
+                          type="button"
+                          class="calendar-color-option"
+                          data-color="yellow"
+                          aria-label="Yellow"
+                          aria-pressed="false"
+                        >
+                          <span
+                            class="calendar-color-dot"
+                            style="--color-dot: #facc15"
+                            aria-hidden="true"
+                          ></span>
+                        </button>
+                        <button
+                          type="button"
+                          class="calendar-color-option"
+                          data-color="cyan"
+                          aria-label="Cyan"
+                          aria-pressed="false"
+                        >
+                          <span
+                            class="calendar-color-dot"
+                            style="--color-dot: #22d3ee"
+                            aria-hidden="true"
+                          ></span>
+                        </button>
+                        <button
+                          type="button"
+                          class="calendar-color-option"
+                          data-color="blue"
+                          aria-label="Blue"
+                          aria-pressed="false"
+                        >
+                          <span
+                            class="calendar-color-dot"
+                            style="--color-dot: #3b82f6"
+                            aria-hidden="true"
+                          ></span>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="calendar-add-actions calendar-edit-actions">
+                      <button
+                        id="calendar-edit-save"
+                        type="button"
+                        class="calendar-option calendar-action-btn"
+                        aria-label="Save"
+                      >
+                        Save
                       </button>
                       <button
                         type="button"
-                        class="calendar-color-option"
-                        data-color="red"
-                        aria-label="Red"
-                        aria-pressed="false"
+                        id="calendar-edit-cancel"
+                        class="calendar-option calendar-action-btn"
+                        aria-label="Cancel"
                       >
-                        <span
-                          class="calendar-color-dot"
-                          style="--color-dot: #ef4444"
-                          aria-hidden="true"
-                        ></span>
+                        Cancel
                       </button>
                       <button
                         type="button"
-                        class="calendar-color-option"
-                        data-color="orange"
-                        aria-label="Orange"
-                        aria-pressed="false"
+                        id="calendar-edit-delete"
+                        class="calendar-option calendar-action-btn calendar-edit-delete-btn"
+                        aria-label="Delete"
                       >
-                        <span
-                          class="calendar-color-dot"
-                          style="--color-dot: #f97316"
+                        <svg
+                          class="calendar-edit-delete-icon"
+                          viewBox="0 0 24 24"
                           aria-hidden="true"
-                        ></span>
-                      </button>
-                      <button
-                        type="button"
-                        class="calendar-color-option"
-                        data-color="yellow"
-                        aria-label="Yellow"
-                        aria-pressed="false"
-                      >
-                        <span
-                          class="calendar-color-dot"
-                          style="--color-dot: #facc15"
-                          aria-hidden="true"
-                        ></span>
-                      </button>
-                      <button
-                        type="button"
-                        class="calendar-color-option"
-                        data-color="cyan"
-                        aria-label="Cyan"
-                        aria-pressed="false"
-                      >
-                        <span
-                          class="calendar-color-dot"
-                          style="--color-dot: #22d3ee"
-                          aria-hidden="true"
-                        ></span>
-                      </button>
-                      <button
-                        type="button"
-                        class="calendar-color-option"
-                        data-color="blue"
-                        aria-label="Blue"
-                        aria-pressed="false"
-                      >
-                        <span
-                          class="calendar-color-dot"
-                          style="--color-dot: #3b82f6"
-                          aria-hidden="true"
-                        ></span>
+                          focusable="false"
+                        >
+                          <path d="M9 3h6" />
+                          <path d="M5 7h14" />
+                          <path d="M8 7v11a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7" />
+                          <path d="M10 11v5" />
+                          <path d="M14 11v5" />
+                        </svg>
                       </button>
                     </div>
                   </div>
-                  <div class="calendar-add-actions">
-                    <button
-                      id="calendar-edit-save"
-                      type="button"
-                      class="calendar-option calendar-action-btn"
-                      aria-label="Save"
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      id="calendar-edit-cancel"
-                      class="calendar-option calendar-action-btn"
-                      aria-label="Cancel"
-                    >
-                      Cancel
-                    </button>
+                </div>
+                <div
+                  id="calendar-delete-confirm"
+                  class="calendar-delete-confirm"
+                  aria-label="Delete Calendar"
+                  aria-hidden="true"
+                >
+                  <div class="calendar-add-panel calendar-delete-panel">
+                    <p class="calendar-delete-message">
+                      ⚠️ Remove <span id="calendar-delete-name" class="calendar-delete-name"></span> ? ⚠️
+                    </p>
+                    <label class="calendar-add-field" for="calendar-delete-confirm-input">
+                      <span class="calendar-add-field-label">Type Name To Confirm</span>
+                      <input
+                        id="calendar-delete-confirm-input"
+                        class="calendar-add-input"
+                        type="text"
+                        placeholder="Calendar name"
+                        autocomplete="off"
+                        autocapitalize="off"
+                        autocorrect="off"
+                        spellcheck="false"
+                      />
+                    </label>
+                    <div class="calendar-add-actions calendar-delete-actions">
+                      <button
+                        id="calendar-delete-confirm-remove"
+                        type="button"
+                        class="calendar-option calendar-action-btn calendar-delete-remove-btn"
+                        aria-label="Remove"
+                      >
+                        Remove
+                      </button>
+                      <button
+                        type="button"
+                        id="calendar-delete-confirm-cancel"
+                        class="calendar-option calendar-action-btn"
+                        aria-label="Cancel"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

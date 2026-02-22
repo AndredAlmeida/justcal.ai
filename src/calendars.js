@@ -295,13 +295,24 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
   const editShell = document.getElementById("calendar-edit-shell");
   const editTrigger = document.getElementById("calendar-edit-trigger");
   const editEditor = document.getElementById("calendar-edit-editor");
+  const editForm = document.getElementById("calendar-edit-form");
   const editSaveButton = document.getElementById("calendar-edit-save");
   const editCancelButton = document.getElementById("calendar-edit-cancel");
+  const editDeleteButton = document.getElementById("calendar-edit-delete");
   const editNameInput = document.getElementById("edit-calendar-name");
   const editColorOptions = document.getElementById("edit-calendar-color");
   const editColorButtons = editColorOptions
     ? [...editColorOptions.querySelectorAll(".calendar-color-option")]
     : [];
+  const deleteConfirmEditor = document.getElementById("calendar-delete-confirm");
+  const deleteConfirmName = document.getElementById("calendar-delete-name");
+  const deleteConfirmInput = document.getElementById("calendar-delete-confirm-input");
+  const deleteConfirmRemoveButton = document.getElementById(
+    "calendar-delete-confirm-remove",
+  );
+  const deleteConfirmCancelButton = document.getElementById(
+    "calendar-delete-confirm-cancel",
+  );
 
   if (!switcher || !button || !calendarList) {
     return;
@@ -367,6 +378,28 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
   const state = loadCalendarsState();
   let calendars = state.calendars;
   let activeCalendarId = state.activeCalendarId;
+  let deleteConfirmTargetName = "";
+  let deleteConfirmTargetId = "";
+
+  const setDeleteConfirmExpanded = ({ isExpanded, calendarName, calendarId } = {}) => {
+    if (!editEditor || !editForm || !deleteConfirmEditor) {
+      return;
+    }
+
+    const nextCalendarName = sanitizeCalendarName(calendarName) || DEFAULT_CALENDAR_LABEL;
+    editEditor.classList.toggle("is-delete-confirming", isExpanded);
+    editForm.setAttribute("aria-hidden", String(isExpanded));
+    deleteConfirmEditor.setAttribute("aria-hidden", String(!isExpanded));
+    if (deleteConfirmName) {
+      deleteConfirmName.textContent = isExpanded ? nextCalendarName : "";
+    }
+    if (deleteConfirmInput) {
+      deleteConfirmInput.classList.remove("is-error-flash");
+      deleteConfirmInput.value = "";
+    }
+    deleteConfirmTargetName = isExpanded ? nextCalendarName : "";
+    deleteConfirmTargetId = isExpanded ? String(calendarId || "") : "";
+  };
 
   const resolveActiveCalendar = () => {
     return (
@@ -401,6 +434,13 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
     });
   };
 
+  const syncDeleteButtonState = () => {
+    if (!editDeleteButton) return;
+    const hasDeleteTarget = calendars.length > 1;
+    editDeleteButton.disabled = !hasDeleteTarget;
+    editDeleteButton.setAttribute("aria-disabled", String(!hasDeleteTarget));
+  };
+
   const persistCalendarState = () => {
     saveCalendarsState({
       calendars,
@@ -411,6 +451,7 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
   const syncCalendarUi = () => {
     renderCalendarList();
     syncSwitcherButton();
+    syncDeleteButtonState();
   };
 
   const setActiveCalendarId = (nextCalendarId) => {
@@ -447,6 +488,7 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
       editNameInput,
       isExpanded: false,
     });
+    setDeleteConfirmExpanded({ isExpanded: false });
     if (editNameInput) {
       editNameInput.classList.remove("is-error-flash");
     }
@@ -466,6 +508,28 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
       editNameInput.value = activeCalendar.name;
     }
     setEditColorByKey(activeCalendar.color);
+  };
+
+  const removeCalendarById = (calendarId) => {
+    if (!calendarId) return false;
+    const removeIndex = calendars.findIndex((calendar) => calendar.id === calendarId);
+    if (removeIndex < 0) {
+      return false;
+    }
+
+    const nextCalendars = calendars.filter((calendar) => calendar.id !== calendarId);
+    if (nextCalendars.length <= 0) {
+      const fallbackCalendar = getDefaultCalendar();
+      nextCalendars.push(fallbackCalendar);
+    }
+
+    calendars = nextCalendars;
+
+    if (!calendars.some((calendar) => calendar.id === activeCalendarId)) {
+      const fallbackIndex = Math.min(removeIndex, calendars.length - 1);
+      activeCalendarId = calendars[fallbackIndex].id;
+    }
+    return true;
   };
 
   addColorButtons.forEach((colorButton) => {
@@ -526,6 +590,7 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
     editTrigger.addEventListener("click", () => {
       resetAddEditor();
       prefillEditEditorFromActiveCalendar();
+      setDeleteConfirmExpanded({ isExpanded: false });
       setEditCalendarEditorExpanded({
         switcher,
         editShell,
@@ -551,12 +616,79 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
     });
   }
 
+  if (editDeleteButton) {
+    editDeleteButton.addEventListener("click", () => {
+      const activeCalendar = resolveActiveCalendar();
+      if (!activeCalendar || calendars.length <= 1) {
+        return;
+      }
+      setDeleteConfirmExpanded({
+        isExpanded: true,
+        calendarName: activeCalendar.name,
+        calendarId: activeCalendar.id,
+      });
+      deleteConfirmInput?.focus();
+    });
+  }
+
+  if (deleteConfirmCancelButton) {
+    deleteConfirmCancelButton.addEventListener("click", () => {
+      const activeCalendar = resolveActiveCalendar();
+      setDeleteConfirmExpanded({
+        isExpanded: false,
+        calendarName: activeCalendar?.name,
+      });
+      editDeleteButton?.focus();
+    });
+  }
+
+  if (deleteConfirmRemoveButton) {
+    deleteConfirmRemoveButton.addEventListener("click", () => {
+      const activeCalendar = resolveActiveCalendar();
+      if (!activeCalendar || calendars.length <= 1) {
+        setDeleteConfirmExpanded({ isExpanded: false });
+        return;
+      }
+
+      const expectedCalendarName = deleteConfirmTargetName || activeCalendar.name;
+      const typedCalendarName = deleteConfirmInput?.value ?? "";
+      if (typedCalendarName !== expectedCalendarName) {
+        flashMissingInput(deleteConfirmInput);
+        deleteConfirmInput?.focus();
+        return;
+      }
+
+      const targetCalendarId = deleteConfirmTargetId || activeCalendar.id;
+      const didRemove = removeCalendarById(targetCalendarId);
+      if (!didRemove) {
+        return;
+      }
+
+      persistCalendarState();
+      syncCalendarUi();
+      notifyActiveCalendarChange();
+
+      resetEditEditor();
+      setCalendarSwitcherExpanded({
+        switcher,
+        button,
+        activeCalendar: resolveActiveCalendar(),
+        isExpanded: false,
+      });
+      button.focus();
+    });
+  }
+
   addNameInput?.addEventListener("input", () => {
     addNameInput.classList.remove("is-error-flash");
   });
 
   editNameInput?.addEventListener("input", () => {
     editNameInput.classList.remove("is-error-flash");
+  });
+
+  deleteConfirmInput?.addEventListener("input", () => {
+    deleteConfirmInput.classList.remove("is-error-flash");
   });
 
   addNameInput?.addEventListener("animationend", (event) => {
@@ -571,6 +703,13 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
       return;
     }
     editNameInput.classList.remove("is-error-flash");
+  });
+
+  deleteConfirmInput?.addEventListener("animationend", (event) => {
+    if (event.animationName !== "calendar-add-input-error-flash") {
+      return;
+    }
+    deleteConfirmInput.classList.remove("is-error-flash");
   });
 
   if (addSubmitButton) {
