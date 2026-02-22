@@ -47,6 +47,8 @@ const SCORE_UNASSIGNED = -1;
 const SCORE_MIN = SCORE_UNASSIGNED;
 const SCORE_MAX = 10;
 const CHECK_MARKED = true;
+const NOTES_HOVER_PREVIEW_DELAY_MS = 1000;
+const NOTES_HOVER_PREVIEW_HEADER_OFFSET_PX = 8;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -531,6 +533,14 @@ export function initInfiniteCalendar(container) {
   const calendarCanvas = document.createElement("div");
   calendarCanvas.id = "calendar-canvas";
   container.appendChild(calendarCanvas);
+  const notesHoverPreview = document.createElement("aside");
+  notesHoverPreview.className = "notes-hover-preview";
+  notesHoverPreview.setAttribute("aria-hidden", "true");
+  const notesHoverPreviewContent = document.createElement("div");
+  notesHoverPreviewContent.className = "notes-hover-preview-content";
+  notesHoverPreview.appendChild(notesHoverPreviewContent);
+  const appRoot = document.getElementById("app") ?? document.body;
+  appRoot.appendChild(notesHoverPreview);
 
   let earliestMonth = currentMonth;
   let latestMonth = currentMonth;
@@ -546,6 +556,8 @@ export function initInfiniteCalendar(container) {
   let activeCalendarType = DEFAULT_CALENDAR_TYPE;
   let shouldPanZoomOnDaySelect = true;
   let shouldExpandOnDaySelect = true;
+  let hoveredNotesCell = null;
+  let notesHoverPreviewTimer = 0;
 
   function ensureActiveCalendarDayStates() {
     if (!dayStatesByCalendarId[activeCalendarId]) {
@@ -556,6 +568,85 @@ export function initInfiniteCalendar(container) {
 
   function applyActiveCalendarTypeToContainer() {
     container.dataset.calendarType = activeCalendarType;
+  }
+
+  function clearNotesHoverPreviewTimer() {
+    if (!notesHoverPreviewTimer) return;
+    clearTimeout(notesHoverPreviewTimer);
+    notesHoverPreviewTimer = 0;
+  }
+
+  function setNotesHoverPreviewVisible(isVisible) {
+    notesHoverPreview.classList.toggle("is-visible", isVisible);
+    notesHoverPreview.setAttribute("aria-hidden", String(!isVisible));
+  }
+
+  function updateNotesHoverPreviewPosition() {
+    const header = document.querySelector("header");
+    if (!header) return;
+    const nextTop = Math.max(
+      Math.round(header.getBoundingClientRect().bottom + NOTES_HOVER_PREVIEW_HEADER_OFFSET_PX),
+      0,
+    );
+    notesHoverPreview.style.top = `${nextTop}px`;
+  }
+
+  function hideNotesHoverPreview({
+    clearContent = false,
+    resetHoverTarget = true,
+  } = {}) {
+    clearNotesHoverPreviewTimer();
+    if (resetHoverTarget) {
+      hoveredNotesCell = null;
+    }
+    setNotesHoverPreviewVisible(false);
+    if (clearContent) {
+      notesHoverPreviewContent.textContent = "";
+    }
+  }
+
+  function getDayCellFromEventTarget(target) {
+    if (!(target instanceof Element)) return null;
+    const dayCell = target.closest("td.day-cell");
+    if (!dayCell || !container.contains(dayCell)) {
+      return null;
+    }
+    return dayCell;
+  }
+
+  function canShowNotesHoverPreviewForCell(cell) {
+    if (!cell || !cell.isConnected || !container.contains(cell)) return false;
+    if (activeCalendarType !== CALENDAR_TYPE_NOTES) return false;
+    if (cell.classList.contains("selected-day")) return false;
+    return hasDayNoteValue(cell.dataset.dayNotePreview);
+  }
+
+  function scheduleNotesHoverPreviewForCell(cell) {
+    clearNotesHoverPreviewTimer();
+    if (!canShowNotesHoverPreviewForCell(cell)) {
+      return;
+    }
+
+    notesHoverPreviewTimer = window.setTimeout(() => {
+      notesHoverPreviewTimer = 0;
+      if (hoveredNotesCell !== cell) return;
+      if (!canShowNotesHoverPreviewForCell(cell)) return;
+      if (!cell.matches(":hover")) return;
+
+      notesHoverPreviewContent.textContent = cell.dataset.dayNotePreview ?? "";
+      updateNotesHoverPreviewPosition();
+      setNotesHoverPreviewVisible(true);
+    }, NOTES_HOVER_PREVIEW_DELAY_MS);
+  }
+
+  function setHoveredNotesCell(nextCell) {
+    if (hoveredNotesCell === nextCell) return;
+
+    hoveredNotesCell = nextCell;
+    hideNotesHoverPreview({ resetHoverTarget: false });
+    if (hoveredNotesCell) {
+      scheduleNotesHoverPreviewForCell(hoveredNotesCell);
+    }
   }
 
   function getDayValueByKey(dayKeyValue) {
@@ -640,6 +731,17 @@ export function initInfiniteCalendar(container) {
     }
     applyDayValueToCell(cell, normalizedNote, CALENDAR_TYPE_NOTES);
     saveCalendarDayStates(dayStatesByCalendarId);
+
+    if (hoveredNotesCell === cell) {
+      if (canShowNotesHoverPreviewForCell(cell)) {
+        notesHoverPreviewContent.textContent = cell.dataset.dayNotePreview ?? "";
+        if (notesHoverPreview.classList.contains("is-visible")) {
+          updateNotesHoverPreviewPosition();
+        }
+      } else {
+        setHoveredNotesCell(null);
+      }
+    }
   }
 
   function toggleDayCheckForCell(cell) {
@@ -1132,6 +1234,7 @@ export function initInfiniteCalendar(container) {
     ensureActiveCalendarDayStates();
 
     if (didChange) {
+      hideNotesHoverPreview({ clearContent: true });
       clearSelectedDayCell();
       refreshRenderedDayValues();
     }
@@ -1140,6 +1243,7 @@ export function initInfiniteCalendar(container) {
   }
 
   function clearSelectedDayCell() {
+    hideNotesHoverPreview();
     if (!selectedCell) return false;
 
     const previousCell = selectedCell;
@@ -1364,6 +1468,7 @@ export function initInfiniteCalendar(container) {
   }
 
   container.addEventListener("scroll", () => {
+    hideNotesHoverPreview();
     if (framePending) return;
 
     framePending = true;
@@ -1371,6 +1476,25 @@ export function initInfiniteCalendar(container) {
       framePending = false;
       maybeLoadMoreMonths();
     });
+  });
+
+  container.addEventListener("pointermove", (event) => {
+    if (activeCalendarType !== CALENDAR_TYPE_NOTES) {
+      setHoveredNotesCell(null);
+      return;
+    }
+
+    const dayCell = getDayCellFromEventTarget(event.target);
+    if (!canShowNotesHoverPreviewForCell(dayCell)) {
+      setHoveredNotesCell(null);
+      return;
+    }
+
+    setHoveredNotesCell(dayCell);
+  });
+
+  container.addEventListener("pointerleave", () => {
+    setHoveredNotesCell(null);
   });
 
   container.addEventListener("input", (event) => {
@@ -1394,6 +1518,7 @@ export function initInfiniteCalendar(container) {
   });
 
   container.addEventListener("click", (event) => {
+    hideNotesHoverPreview();
     const closeDayButton = event.target.closest("button.day-close-btn");
     if (closeDayButton && container.contains(closeDayButton)) {
       clearSelectedDayCell();
@@ -1426,6 +1551,7 @@ export function initInfiniteCalendar(container) {
   });
 
   document.addEventListener("click", (event) => {
+    hideNotesHoverPreview();
     const clickedElement = event.target instanceof Element ? event.target : null;
     if (clickedElement?.closest("td.day-cell")) return;
     if (clickedElement?.closest("#tweak-controls")) return;
@@ -1437,6 +1563,9 @@ export function initInfiniteCalendar(container) {
     const cards = Array.from(container.querySelectorAll(".month-card"));
     applyDefaultLayoutForCards(cards, { refreshBase: true });
     reapplySelectionFocus();
+    if (notesHoverPreview.classList.contains("is-visible")) {
+      updateNotesHoverPreviewPosition();
+    }
   });
 
   window.addEventListener("keydown", (event) => {
@@ -1449,6 +1578,7 @@ export function initInfiniteCalendar(container) {
   });
 
   applyActiveCalendarTypeToContainer();
+  updateNotesHoverPreviewPosition();
   initialRender();
   return {
     scrollToPresentDay,

@@ -621,6 +621,54 @@
           inset 0 1px 0 color-mix(in srgb, #ffffff 22%, transparent);
       }
 
+      .notes-hover-preview {
+        position: fixed;
+        left: 50%;
+        top: calc(env(safe-area-inset-top, 0px) + 4.1rem);
+        width: min(42rem, calc(100vw - 1.4rem));
+        max-height: min(42vh, 16rem);
+        border-radius: 14px;
+        border: 1px solid color-mix(in srgb, var(--line) 62%, transparent);
+        background: color-mix(in srgb, var(--panel) 90%, transparent);
+        box-shadow:
+          0 8px 24px color-mix(in srgb, #0f172a 28%, transparent),
+          inset 0 1px 0 color-mix(in srgb, #ffffff 22%, transparent);
+        padding: 0.74rem 0.88rem;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transform: translate(-50%, -8px) scale(0.985);
+        z-index: 35;
+        transition:
+          opacity 0.2s ease,
+          transform 0.2s ease,
+          visibility 0s linear 0.2s;
+      }
+
+      .notes-hover-preview.is-visible {
+        opacity: 1;
+        visibility: visible;
+        transform: translate(-50%, 0) scale(1);
+        transition:
+          opacity 0.2s ease,
+          transform 0.2s ease,
+          visibility 0s linear 0s;
+      }
+
+      .notes-hover-preview-content {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 12;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: pre-line;
+        overflow-wrap: anywhere;
+        font-size: 0.84rem;
+        line-height: 1.34;
+        letter-spacing: 0.005em;
+        color: color-mix(in srgb, var(--ink) 86%, #ffffff 14%);
+      }
+
       .day-score-slider {
         --score-progress: 0%;
         --score-track: color-mix(in srgb, var(--line) 52%, var(--panel) 48%);
@@ -2080,6 +2128,18 @@
           inset 0 1px 0 color-mix(in srgb, #ffffff 16%, transparent);
       }
 
+      :root.dark .notes-hover-preview {
+        border-color: color-mix(in srgb, #475569 58%, transparent);
+        background: color-mix(in srgb, #0f172a 90%, #1e293b 10%);
+        box-shadow:
+          0 10px 26px rgba(2, 6, 23, 0.6),
+          inset 0 1px 0 color-mix(in srgb, #f8fafc 10%, transparent);
+      }
+
+      :root.dark .notes-hover-preview-content {
+        color: color-mix(in srgb, #dbeafe 88%, #ffffff 12%);
+      }
+
       :root.dark td.day-cell[data-day-checked="true"]::after {
         color: color-mix(in srgb, #86efac 76%, #f8fafc 24%);
       }
@@ -2229,6 +2289,20 @@
           font-size: 0.62rem;
           padding: 0.36rem 0.42rem;
           border-radius: 10px;
+        }
+
+        .notes-hover-preview {
+          width: calc(100vw - 1rem);
+          top: calc(env(safe-area-inset-top, 0px) + 3.75rem);
+          max-height: min(48vh, 14rem);
+          border-radius: 11px;
+          padding: 0.58rem 0.64rem;
+        }
+
+        .notes-hover-preview-content {
+          -webkit-line-clamp: 10;
+          font-size: 0.74rem;
+          line-height: 1.3;
         }
 
         .day-score-value {
