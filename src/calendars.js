@@ -78,10 +78,34 @@ export function setupCalendarSwitcher(button) {
   const addEditor = document.getElementById("calendar-add-editor");
   const addCancelButton = document.getElementById("calendar-add-cancel");
   const addNameInput = document.getElementById("new-calendar-name");
+  const addColorOptions = document.getElementById("new-calendar-color");
+  const addColorButtons = addColorOptions
+    ? [...addColorOptions.querySelectorAll(".calendar-color-option")]
+    : [];
 
   if (!switcher || !button) {
     return;
   }
+
+  const setActiveColor = (nextButton) => {
+    if (!nextButton) {
+      return;
+    }
+    addColorButtons.forEach((candidateButton) => {
+      const isActive = candidateButton === nextButton;
+      candidateButton.classList.toggle("is-active", isActive);
+      candidateButton.setAttribute("aria-pressed", String(isActive));
+    });
+  };
+
+  const defaultColorButton =
+    addColorButtons.find((candidateButton) => {
+      return candidateButton.dataset.color === "gray";
+    }) || addColorButtons[0];
+
+  const resetAddColor = () => {
+    setActiveColor(defaultColorButton);
+  };
 
   const resetAddEditor = () => {
     setAddCalendarEditorExpanded({
@@ -91,7 +115,14 @@ export function setupCalendarSwitcher(button) {
       addNameInput,
       isExpanded: false,
     });
+    resetAddColor();
   };
+
+  addColorButtons.forEach((colorButton) => {
+    colorButton.addEventListener("click", () => {
+      setActiveColor(colorButton);
+    });
+  });
 
   resetAddEditor();
   setCalendarSwitcherExpanded({ switcher, button, isExpanded: false });

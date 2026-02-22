@@ -903,6 +903,15 @@
         gap: 0.2rem;
       }
 
+      .calendar-add-shell.is-editing {
+        gap: calc(0.18rem + 6px);
+      }
+
+      #calendar-switcher.is-adding .calendar-edit-divider,
+      #calendar-switcher.is-adding #calendar-edit-trigger {
+        display: none;
+      }
+
       .calendar-add-trigger {
         max-height: 2.2rem;
         overflow: hidden;
@@ -930,8 +939,23 @@
           transform 0.18s ease;
       }
 
+      .calendar-add-panel {
+        display: grid;
+        gap: 0.38rem;
+        padding: 0.46rem 0.52rem 0.52rem;
+        border-radius: 10px;
+        border: 0;
+        background: rgb(0 0 0 / 20%);
+      }
+
+      .calendar-add-panel .calendar-add-title,
+      .calendar-add-panel .calendar-add-field-label {
+        color: color-mix(in srgb, #ffffff 88%, var(--ink) 12%);
+      }
+
       .calendar-add-shell.is-editing .calendar-add-trigger {
         max-height: 0;
+        min-height: 0;
         opacity: 0;
         pointer-events: none;
         padding-top: 0;
@@ -942,25 +966,34 @@
       }
 
       .calendar-add-shell.is-editing .calendar-add-editor {
-        max-height: 18rem;
+        max-height: 22rem;
         opacity: 1;
         pointer-events: auto;
         transform: translateY(0);
       }
 
       .calendar-add-title {
-        margin: 0;
+        margin: 0 0 0.2rem;
         font-size: 0.66rem;
         font-weight: 700;
         letter-spacing: 0.08em;
-        text-transform: uppercase;
+        text-transform: none;
+        text-align: center;
         color: var(--ink);
         opacity: 0.82;
       }
 
       .calendar-add-field {
         display: grid;
-        gap: 0.2rem;
+        gap: 0.32rem;
+      }
+
+      .calendar-add-field + .calendar-add-field {
+        margin-top: calc(0.22rem + 4px);
+      }
+
+      .calendar-add-field + .calendar-add-actions {
+        margin-top: 4px;
       }
 
       .calendar-add-field-label {
@@ -976,7 +1009,7 @@
       .calendar-add-select {
         height: 1.95rem;
         border: 1px solid var(--line);
-        border-radius: 12px;
+        border-radius: 14px;
         padding: 0 0.56rem;
         font-size: 0.66rem;
         font-weight: 600;
@@ -992,6 +1025,53 @@
         cursor: pointer;
       }
 
+      .calendar-add-color-options {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: calc(0.38rem - 6px);
+      }
+
+      .calendar-color-option {
+        width: calc(1.56rem * 1.2);
+        height: calc(1.56rem * 1.2);
+        min-height: calc(1.56rem * 1.2);
+        border: 0;
+        border-radius: 999px;
+        padding: 0;
+        background: transparent;
+        display: inline-grid;
+        place-items: center;
+        cursor: pointer;
+        transition: transform 0.16s ease;
+      }
+
+      .calendar-color-option:hover {
+        transform: scale(1.08);
+      }
+
+      .calendar-color-option:focus-visible {
+        outline: none;
+      }
+
+      .calendar-color-option.is-active {
+        transform: scale(1.06);
+      }
+
+      .calendar-color-dot {
+        width: calc(1.06rem * 1.2);
+        height: calc(1.06rem * 1.2);
+        border-radius: 999px;
+        flex: 0 0 calc(1.06rem * 1.2);
+        display: inline-grid;
+        place-items: center;
+        background: var(--color-dot, #9ca3af);
+      }
+
+      .calendar-color-option.is-active .calendar-color-dot {
+        box-shadow: 0 0 0 2px #ffffff;
+      }
+
       .calendar-add-actions {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -1001,6 +1081,20 @@
       .calendar-action-btn {
         height: 1.95rem;
         justify-content: center;
+        border: 1px solid rgba(168, 182, 255, 0.5);
+        border-radius: 20px;
+        color: color-mix(in srgb, #ffffff 90%, var(--ink) 10%);
+        background: #1a1d33;
+      }
+
+      .calendar-action-btn:hover {
+        background: #252a47;
+        border-color: rgba(168, 182, 255, 0.5);
+      }
+
+      .calendar-action-btn:active {
+        background: #30365a;
+        border-color: rgba(168, 182, 255, 0.5);
       }
 
       #calendar-switcher.is-expanded #header-calendars-btn {
@@ -1529,44 +1623,137 @@
                 class="calendar-add-editor"
                 aria-label="New Calendar"
               >
-                <p class="calendar-add-title">New Calendar</p>
-                <label class="calendar-add-field" for="new-calendar-name">
-                  <span class="calendar-add-field-label">Name</span>
-                  <input
-                    id="new-calendar-name"
-                    class="calendar-add-input"
-                    type="text"
-                    placeholder="Calendar name"
-                    autocomplete="off"
-                  />
-                </label>
-                <label class="calendar-add-field" for="new-calendar-type">
-                  <span class="calendar-add-field-label">Type</span>
-                  <select id="new-calendar-type" class="calendar-add-select">
-                    <option value="signal-3">Signal-3</option>
-                    <option value="score">Score</option>
-                  </select>
-                </label>
-                <div class="calendar-add-actions">
-                  <button
-                    type="button"
-                    class="calendar-option calendar-action-btn"
-                    aria-label="Add"
-                  >
-                    Add
-                  </button>
-                  <button
-                    type="button"
-                    id="calendar-add-cancel"
-                    class="calendar-option calendar-action-btn"
-                    aria-label="Cancel"
-                  >
-                    Cancel
-                  </button>
+                <div class="calendar-add-panel">
+                  <p class="calendar-add-title">New Calendar</p>
+                  <label class="calendar-add-field" for="new-calendar-name">
+                    <span class="calendar-add-field-label">Name</span>
+                    <input
+                      id="new-calendar-name"
+                      class="calendar-add-input"
+                      type="text"
+                      placeholder="Calendar name"
+                      autocomplete="off"
+                    />
+                  </label>
+                  <label class="calendar-add-field" for="new-calendar-type">
+                    <span class="calendar-add-field-label">Type</span>
+                    <select id="new-calendar-type" class="calendar-add-select">
+                      <option value="signal-3">Semaphore 🔴 🟡 🟢</option>
+                      <option value="score">Score</option>
+                    </select>
+                  </label>
+                  <div class="calendar-add-field" aria-label="Color">
+                    <span class="calendar-add-field-label">Color</span>
+                    <div
+                      id="new-calendar-color"
+                      class="calendar-add-color-options"
+                      role="radiogroup"
+                      aria-label="Calendar color"
+                    >
+                      <button
+                        type="button"
+                        class="calendar-color-option is-active"
+                        data-color="gray"
+                        aria-label="Gray"
+                        aria-pressed="true"
+                      >
+                        <span
+                          class="calendar-color-dot"
+                          style="--color-dot: #9ca3af"
+                          aria-hidden="true"
+                        ></span>
+                      </button>
+                      <button
+                        type="button"
+                        class="calendar-color-option"
+                        data-color="red"
+                        aria-label="Red"
+                        aria-pressed="false"
+                      >
+                        <span
+                          class="calendar-color-dot"
+                          style="--color-dot: #ef4444"
+                          aria-hidden="true"
+                        ></span>
+                      </button>
+                      <button
+                        type="button"
+                        class="calendar-color-option"
+                        data-color="orange"
+                        aria-label="Orange"
+                        aria-pressed="false"
+                      >
+                        <span
+                          class="calendar-color-dot"
+                          style="--color-dot: #f97316"
+                          aria-hidden="true"
+                        ></span>
+                      </button>
+                      <button
+                        type="button"
+                        class="calendar-color-option"
+                        data-color="yellow"
+                        aria-label="Yellow"
+                        aria-pressed="false"
+                      >
+                        <span
+                          class="calendar-color-dot"
+                          style="--color-dot: #facc15"
+                          aria-hidden="true"
+                        ></span>
+                      </button>
+                      <button
+                        type="button"
+                        class="calendar-color-option"
+                        data-color="cyan"
+                        aria-label="Cyan"
+                        aria-pressed="false"
+                      >
+                        <span
+                          class="calendar-color-dot"
+                          style="--color-dot: #22d3ee"
+                          aria-hidden="true"
+                        ></span>
+                      </button>
+                      <button
+                        type="button"
+                        class="calendar-color-option"
+                        data-color="blue"
+                        aria-label="Blue"
+                        aria-pressed="false"
+                      >
+                        <span
+                          class="calendar-color-dot"
+                          style="--color-dot: #3b82f6"
+                          aria-hidden="true"
+                        ></span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="calendar-add-actions">
+                    <button
+                      type="button"
+                      class="calendar-option calendar-action-btn"
+                      aria-label="Add"
+                    >
+                      Add
+                    </button>
+                    <button
+                      type="button"
+                      id="calendar-add-cancel"
+                      class="calendar-option calendar-action-btn"
+                      aria-label="Cancel"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-            <div class="calendar-options-divider" aria-hidden="true"></div>
+            <div
+              class="calendar-options-divider calendar-edit-divider"
+              aria-hidden="true"
+            ></div>
             <button
               id="calendar-edit-trigger"
               type="button"
