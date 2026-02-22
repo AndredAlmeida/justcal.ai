@@ -381,6 +381,24 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
   let deleteConfirmTargetName = "";
   let deleteConfirmTargetId = "";
 
+  const normalizeCalendarNameForComparison = (calendarName) => {
+    return sanitizeCalendarName(calendarName).toLocaleLowerCase();
+  };
+
+  const hasCalendarNameCollision = (candidateName, { excludingCalendarId = "" } = {}) => {
+    const normalizedCandidateName = normalizeCalendarNameForComparison(candidateName);
+    if (!normalizedCandidateName) {
+      return false;
+    }
+
+    return calendars.some((calendar) => {
+      if (excludingCalendarId && calendar.id === excludingCalendarId) {
+        return false;
+      }
+      return normalizeCalendarNameForComparison(calendar.name) === normalizedCandidateName;
+    });
+  };
+
   const setDeleteConfirmExpanded = ({ isExpanded, calendarName, calendarId } = {}) => {
     if (!editEditor || !editForm || !deleteConfirmEditor) {
       return;
@@ -720,6 +738,11 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
         addNameInput?.focus();
         return;
       }
+      if (hasCalendarNameCollision(nextName)) {
+        flashMissingName();
+        addNameInput?.focus();
+        return;
+      }
 
       const usedIds = new Set(calendars.map((calendar) => calendar.id));
       const selectedColorButton = addColorButtons.find((candidateButton) => {
@@ -763,6 +786,15 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
 
       const nextName = sanitizeCalendarName(editNameInput?.value);
       if (!nextName) {
+        flashMissingEditName();
+        editNameInput?.focus();
+        return;
+      }
+      if (
+        hasCalendarNameCollision(nextName, {
+          excludingCalendarId: activeCalendar.id,
+        })
+      ) {
         flashMissingEditName();
         editNameInput?.focus();
         return;
