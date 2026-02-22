@@ -38,12 +38,14 @@ const LEGACY_DAY_STATE_STORAGE_KEY = "justcal-day-states";
 const DEFAULT_CALENDAR_ID = "energy-tracker";
 const CALENDAR_TYPE_SIGNAL = "signal-3";
 const CALENDAR_TYPE_SCORE = "score";
+const CALENDAR_TYPE_CHECK = "check";
 const DEFAULT_CALENDAR_TYPE = CALENDAR_TYPE_SIGNAL;
 const DAY_STATES = ["x", "red", "yellow", "green"];
 const DEFAULT_DAY_STATE = "x";
 const SCORE_UNASSIGNED = -1;
 const SCORE_MIN = SCORE_UNASSIGNED;
 const SCORE_MAX = 10;
+const CHECK_MARKED = true;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -80,6 +82,9 @@ function normalizeCalendarType(calendarType) {
   if (normalizedCalendarType === CALENDAR_TYPE_SCORE) {
     return CALENDAR_TYPE_SCORE;
   }
+  if (normalizedCalendarType === CALENDAR_TYPE_CHECK) {
+    return CALENDAR_TYPE_CHECK;
+  }
   return CALENDAR_TYPE_SIGNAL;
 }
 
@@ -94,6 +99,27 @@ function normalizeScoreValue(value) {
     return SCORE_UNASSIGNED;
   }
   return roundedScore;
+}
+
+function normalizeCheckValue(value) {
+  if (value === true) {
+    return true;
+  }
+  if (typeof value === "number") {
+    return value === 1;
+  }
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const normalizedValue = value.trim().toLowerCase();
+  return (
+    normalizedValue === "checked" ||
+    normalizedValue === "true" ||
+    normalizedValue === "1" ||
+    normalizedValue === "yes" ||
+    normalizedValue === "on"
+  );
 }
 
 function normalizeCalendarDayEntries(rawDayStates) {
@@ -119,6 +145,12 @@ function normalizeCalendarDayEntries(rawDayStates) {
     const normalizedScore = normalizeScoreValue(rawValue);
     if (normalizedScore !== SCORE_UNASSIGNED) {
       normalizedDayEntries[dayKeyValue] = normalizedScore;
+      return;
+    }
+
+    const normalizedCheck = normalizeCheckValue(rawDayValue);
+    if (normalizedCheck === CHECK_MARKED) {
+      normalizedDayEntries[dayKeyValue] = true;
     }
   });
   return normalizedDayEntries;
@@ -229,6 +261,7 @@ function applyDayStateToCell(cell, dayState) {
   const normalizedState = normalizeDayState(dayState);
   cell.dataset.dayState = normalizedState;
   delete cell.dataset.dayScore;
+  delete cell.dataset.dayChecked;
 
   const stateButtons = cell.querySelectorAll(".day-state-btn");
   stateButtons.forEach((button) => {
@@ -242,6 +275,7 @@ function applyDayStateToCell(cell, dayState) {
 function applyDayScoreToCell(cell, dayScore) {
   const normalizedScore = normalizeScoreValue(dayScore);
   delete cell.dataset.dayState;
+  delete cell.dataset.dayChecked;
   if (normalizedScore === SCORE_UNASSIGNED) {
     delete cell.dataset.dayScore;
   } else {
@@ -250,10 +284,26 @@ function applyDayScoreToCell(cell, dayScore) {
   syncDayScoreControls(cell, normalizedScore);
 }
 
+function applyDayCheckToCell(cell, dayCheckValue) {
+  const isChecked = normalizeCheckValue(dayCheckValue);
+  delete cell.dataset.dayState;
+  delete cell.dataset.dayScore;
+  if (isChecked) {
+    cell.dataset.dayChecked = "true";
+  } else {
+    delete cell.dataset.dayChecked;
+  }
+  syncDayScoreControls(cell, SCORE_UNASSIGNED);
+}
+
 function applyDayValueToCell(cell, dayValue, calendarType) {
   const normalizedCalendarType = normalizeCalendarType(calendarType);
   if (normalizedCalendarType === CALENDAR_TYPE_SCORE) {
     applyDayScoreToCell(cell, dayValue);
+    return;
+  }
+  if (normalizedCalendarType === CALENDAR_TYPE_CHECK) {
+    applyDayCheckToCell(cell, dayValue);
     return;
   }
   applyDayStateToCell(cell, dayValue);
@@ -430,6 +480,9 @@ export function initInfiniteCalendar(container) {
     if (activeCalendarType === CALENDAR_TYPE_SCORE) {
       return normalizeScoreValue(rawDayValue);
     }
+    if (activeCalendarType === CALENDAR_TYPE_CHECK) {
+      return normalizeCheckValue(rawDayValue);
+    }
     return normalizeDayState(rawDayValue);
   }
 
@@ -470,6 +523,26 @@ export function initInfiniteCalendar(container) {
     }
     applyDayValueToCell(cell, normalizedScore, CALENDAR_TYPE_SCORE);
     saveCalendarDayStates(dayStatesByCalendarId);
+  }
+
+  function setDayCheckForCell(cell, nextCheckValue) {
+    const dayKeyValue = cell.dataset.dayKey;
+    if (!dayKeyValue) return;
+
+    const isChecked = normalizeCheckValue(nextCheckValue);
+    const activeDayStates = ensureActiveCalendarDayStates();
+    if (isChecked === CHECK_MARKED) {
+      activeDayStates[dayKeyValue] = true;
+    } else {
+      delete activeDayStates[dayKeyValue];
+    }
+    applyDayValueToCell(cell, isChecked, CALENDAR_TYPE_CHECK);
+    saveCalendarDayStates(dayStatesByCalendarId);
+  }
+
+  function toggleDayCheckForCell(cell) {
+    const isChecked = normalizeCheckValue(cell.dataset.dayChecked);
+    setDayCheckForCell(cell, !isChecked);
   }
 
   function getTableStructure(table) {
@@ -1232,6 +1305,10 @@ export function initInfiniteCalendar(container) {
 
     const dayCell = event.target.closest("td.day-cell");
     if (!dayCell || !container.contains(dayCell)) return;
+    if (activeCalendarType === CALENDAR_TYPE_CHECK) {
+      toggleDayCheckForCell(dayCell);
+      return;
+    }
     selectDayCell(dayCell);
   });
 

@@ -720,6 +720,12 @@
         pointer-events: auto;
       }
 
+      #calendar-scroll[data-calendar-type="check"] td.day-cell .day-state-row,
+      #calendar-scroll[data-calendar-type="check"] td.day-cell .day-score-row,
+      #calendar-scroll[data-calendar-type="check"] td.day-cell .day-close-btn {
+        display: none;
+      }
+
       td.day-cell::after {
         content: "";
         position: absolute;
@@ -766,6 +772,22 @@
         color: color-mix(in srgb, var(--ink) 90%, #ffffff 10%);
         font-size: 0.78rem;
         font-weight: 750;
+        line-height: 1;
+        opacity: 1;
+        transform: translate(-50%, -50%);
+      }
+
+      td.day-cell[data-day-checked="true"]::after {
+        content: "\2713";
+        width: auto;
+        min-width: 0;
+        height: auto;
+        padding: 0;
+        border-radius: 0;
+        background: transparent;
+        color: color-mix(in srgb, #22c55e 62%, var(--ink) 38%);
+        font-size: calc(0.88rem * 1.5);
+        font-weight: 800;
         line-height: 1;
         opacity: 1;
         transform: translate(-50%, -50%);
@@ -1153,6 +1175,21 @@
         font-size: 0.55rem;
         font-weight: 800;
         line-height: 1;
+      }
+
+      .calendar-option-type-icon.is-check {
+        display: inline-grid;
+        place-items: center;
+        background: color-mix(in srgb, var(--muted) 82%, #22c55e 18%);
+        border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+        color: color-mix(in srgb, #22c55e 74%, #ffffff 26%);
+        font-size: 0.63rem;
+        font-weight: 850;
+        line-height: 1;
+      }
+
+      .calendar-option-type-icon.is-check::before {
+        content: "\2713";
       }
 
       .calendar-option-action {
@@ -1897,6 +1934,10 @@
         color: #c7d2fe;
       }
 
+      :root.dark td.day-cell[data-day-checked="true"]::after {
+        color: color-mix(in srgb, #86efac 76%, #f8fafc 24%);
+      }
+
       :root.dark td.day-cell.selected-day {
         background: var(
           --selected-day-dark-gradient,
@@ -2177,6 +2218,7 @@
                     <select id="new-calendar-type" class="calendar-add-select">
                       <option value="signal-3">Semaphore</option>
                       <option value="score">Score</option>
+                      <option value="check">Check</option>
                     </select>
                   </label>
                   <div class="calendar-add-field" aria-label="Color">

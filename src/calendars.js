@@ -5,6 +5,7 @@ const DEFAULT_CALENDAR_COLOR = "blue";
 const DEFAULT_NEW_CALENDAR_COLOR = "gray";
 const CALENDAR_TYPE_SIGNAL = "signal-3";
 const CALENDAR_TYPE_SCORE = "score";
+const CALENDAR_TYPE_CHECK = "check";
 const DEFAULT_CALENDAR_TYPE = CALENDAR_TYPE_SIGNAL;
 const CALENDAR_BUTTON_LABEL = "Open calendars";
 const CALENDAR_CLOSE_LABEL = "Close calendars";
@@ -49,6 +50,9 @@ function normalizeCalendarType(calendarType, fallbackType = DEFAULT_CALENDAR_TYP
   }
   if (normalizedCalendarType === CALENDAR_TYPE_SCORE) {
     return CALENDAR_TYPE_SCORE;
+  }
+  if (normalizedCalendarType === CALENDAR_TYPE_CHECK) {
+    return CALENDAR_TYPE_CHECK;
   }
   return fallbackType;
 }
@@ -169,6 +173,9 @@ function createCalendarTypeIconElement(calendarType) {
   if (normalizedCalendarType === CALENDAR_TYPE_SCORE) {
     typeIcon.classList.add("is-score");
     typeIcon.textContent = "S";
+  } else if (normalizedCalendarType === CALENDAR_TYPE_CHECK) {
+    typeIcon.classList.add("is-check");
+    typeIcon.textContent = "";
   }
 
   return typeIcon;
