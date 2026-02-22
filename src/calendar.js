@@ -48,7 +48,8 @@ const SCORE_MIN = SCORE_UNASSIGNED;
 const SCORE_MAX = 10;
 const CHECK_MARKED = true;
 const NOTES_HOVER_PREVIEW_DELAY_MS = 1000;
-const NOTES_HOVER_PREVIEW_HEADER_OFFSET_PX = 8;
+const NOTES_HOVER_PREVIEW_GAP_PX = 8;
+const NOTES_HOVER_PREVIEW_VIEWPORT_PADDING_PX = 8;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -581,14 +582,37 @@ export function initInfiniteCalendar(container) {
     notesHoverPreview.setAttribute("aria-hidden", String(!isVisible));
   }
 
-  function updateNotesHoverPreviewPosition() {
-    const header = document.querySelector("header");
-    if (!header) return;
-    const nextTop = Math.max(
-      Math.round(header.getBoundingClientRect().bottom + NOTES_HOVER_PREVIEW_HEADER_OFFSET_PX),
-      0,
+  function updateNotesHoverPreviewPosition(cell) {
+    if (!cell || !cell.isConnected || !container.contains(cell)) return;
+
+    const cellRect = cell.getBoundingClientRect();
+    const previewRect = notesHoverPreview.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const previewWidth = previewRect.width;
+    const previewHeight = previewRect.height;
+
+    let nextLeft =
+      cellRect.left + cellRect.width / 2 - previewWidth / 2;
+    nextLeft = clamp(
+      nextLeft,
+      NOTES_HOVER_PREVIEW_VIEWPORT_PADDING_PX,
+      viewportWidth - previewWidth - NOTES_HOVER_PREVIEW_VIEWPORT_PADDING_PX,
     );
-    notesHoverPreview.style.top = `${nextTop}px`;
+
+    const topAboveCell = cellRect.top - previewHeight - NOTES_HOVER_PREVIEW_GAP_PX;
+    const topBelowCell = cellRect.bottom + NOTES_HOVER_PREVIEW_GAP_PX;
+    const hasSpaceAbove = topAboveCell >= NOTES_HOVER_PREVIEW_VIEWPORT_PADDING_PX;
+
+    let nextTop = hasSpaceAbove ? topAboveCell : topBelowCell;
+    nextTop = clamp(
+      nextTop,
+      NOTES_HOVER_PREVIEW_VIEWPORT_PADDING_PX,
+      viewportHeight - previewHeight - NOTES_HOVER_PREVIEW_VIEWPORT_PADDING_PX,
+    );
+
+    notesHoverPreview.style.left = `${Math.round(nextLeft)}px`;
+    notesHoverPreview.style.top = `${Math.round(nextTop)}px`;
   }
 
   function hideNotesHoverPreview({
@@ -634,7 +658,7 @@ export function initInfiniteCalendar(container) {
       if (!cell.matches(":hover")) return;
 
       notesHoverPreviewContent.textContent = cell.dataset.dayNotePreview ?? "";
-      updateNotesHoverPreviewPosition();
+      updateNotesHoverPreviewPosition(cell);
       setNotesHoverPreviewVisible(true);
     }, NOTES_HOVER_PREVIEW_DELAY_MS);
   }
@@ -736,7 +760,7 @@ export function initInfiniteCalendar(container) {
       if (canShowNotesHoverPreviewForCell(cell)) {
         notesHoverPreviewContent.textContent = cell.dataset.dayNotePreview ?? "";
         if (notesHoverPreview.classList.contains("is-visible")) {
-          updateNotesHoverPreviewPosition();
+          updateNotesHoverPreviewPosition(cell);
         }
       } else {
         setHoveredNotesCell(null);
@@ -1563,8 +1587,8 @@ export function initInfiniteCalendar(container) {
     const cards = Array.from(container.querySelectorAll(".month-card"));
     applyDefaultLayoutForCards(cards, { refreshBase: true });
     reapplySelectionFocus();
-    if (notesHoverPreview.classList.contains("is-visible")) {
-      updateNotesHoverPreviewPosition();
+    if (notesHoverPreview.classList.contains("is-visible") && hoveredNotesCell) {
+      updateNotesHoverPreviewPosition(hoveredNotesCell);
     }
   });
 
@@ -1578,7 +1602,6 @@ export function initInfiniteCalendar(container) {
   });
 
   applyActiveCalendarTypeToContainer();
-  updateNotesHoverPreviewPosition();
   initialRender();
   return {
     scrollToPresentDay,

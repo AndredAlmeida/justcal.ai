@@ -623,8 +623,8 @@
 
       .notes-hover-preview {
         position: fixed;
-        left: 50%;
-        top: calc(env(safe-area-inset-top, 0px) + 4.1rem);
+        left: 0;
+        top: 0;
         width: min(42rem, calc(100vw - 1.4rem));
         max-height: min(42vh, 16rem);
         border-radius: 14px;
@@ -635,7 +635,7 @@
         opacity: 0;
         visibility: hidden;
         pointer-events: none;
-        transform: translate(-50%, -8px) scale(0.985);
+        transform: translateY(-8px) scale(0.985);
         z-index: 35;
         transition:
           opacity 0.2s ease,
@@ -646,7 +646,7 @@
       .notes-hover-preview.is-visible {
         opacity: 1;
         visibility: visible;
-        transform: translate(-50%, 0) scale(1);
+        transform: translateY(0) scale(1);
         transition:
           opacity 0.2s ease,
           transform 0.2s ease,
@@ -2279,7 +2279,6 @@
 
         .notes-hover-preview {
           width: calc(100vw - 1rem);
-          top: calc(env(safe-area-inset-top, 0px) + 3.75rem);
           max-height: min(48vh, 14rem);
           border-radius: 11px;
           padding: 0.58rem 0.64rem;
