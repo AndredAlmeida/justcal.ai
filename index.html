@@ -711,6 +711,25 @@
         display: none;
       }
 
+      #calendar-scroll[data-calendar-type="signal-3"] td.day-cell .day-state-row {
+        top: calc(50% + 5px);
+        transition: none;
+      }
+
+      #calendar-scroll[data-calendar-type="signal-3"] td.day-cell:hover .day-state-row {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      #calendar-scroll[data-calendar-type="signal-3"] td.day-cell[data-day-state="red"]:not(.selected-day)::after,
+      #calendar-scroll[data-calendar-type="signal-3"] td.day-cell[data-day-state="yellow"]:not(.selected-day)::after,
+      #calendar-scroll[data-calendar-type="signal-3"] td.day-cell[data-day-state="green"]:not(.selected-day)::after {
+        left: auto;
+        top: 0.34rem;
+        right: 0.34rem;
+        transform: none;
+      }
+
       #calendar-scroll[data-calendar-type="score"] td.day-cell .day-state-row {
         display: none;
       }
