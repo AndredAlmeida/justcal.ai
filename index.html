@@ -20,6 +20,11 @@
         --bg-bottom: #edf2f9;
         --header-bg: rgba(255, 255, 255, 0.86);
         --card-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+        --calendar-action-bg: #e8eef9;
+        --calendar-action-bg-hover: #dde6f7;
+        --calendar-action-bg-active: #d1dcf3;
+        --calendar-action-border: rgba(71, 93, 140, 0.38);
+        --calendar-action-ink: #23314f;
         color-scheme: light;
       }
 
@@ -32,6 +37,11 @@
         --bg-bottom: #0f172a;
         --header-bg: rgba(2, 6, 23, 0.8);
         --card-shadow: 0 10px 25px rgba(2, 6, 23, 0.5);
+        --calendar-action-bg: #1b2538;
+        --calendar-action-bg-hover: #243146;
+        --calendar-action-bg-active: #2c3d55;
+        --calendar-action-border: rgba(148, 163, 184, 0.5);
+        --calendar-action-ink: #e8edf9;
         color-scheme: dark;
       }
 
@@ -44,6 +54,11 @@
         --bg-bottom: #171c34;
         --header-bg: rgba(15, 18, 36, 0.84);
         --card-shadow: 0 10px 25px rgba(8, 11, 24, 0.58);
+        --calendar-action-bg: #1a1d33;
+        --calendar-action-bg-hover: #252a47;
+        --calendar-action-bg-active: #30365a;
+        --calendar-action-border: rgba(168, 182, 255, 0.5);
+        --calendar-action-ink: #eef2ff;
         color-scheme: dark;
       }
 
@@ -56,6 +71,11 @@
         --bg-bottom: #001f27;
         --header-bg: rgba(0, 43, 54, 0.88);
         --card-shadow: 0 10px 28px rgba(0, 24, 30, 0.7);
+        --calendar-action-bg: #0d3f4e;
+        --calendar-action-bg-hover: #145060;
+        --calendar-action-bg-active: #1b6071;
+        --calendar-action-border: rgba(147, 161, 161, 0.55);
+        --calendar-action-ink: #d8e2e2;
         color-scheme: dark;
       }
 
@@ -68,6 +88,11 @@
         --bg-bottom: #eee8d5;
         --header-bg: rgba(253, 246, 227, 0.9);
         --card-shadow: 0 8px 22px rgba(88, 110, 117, 0.16);
+        --calendar-action-bg: #e7dfca;
+        --calendar-action-bg-hover: #dcd2b8;
+        --calendar-action-bg-active: #d0c5aa;
+        --calendar-action-border: rgba(88, 110, 117, 0.45);
+        --calendar-action-ink: #445861;
         color-scheme: light;
       }
 
@@ -952,9 +977,18 @@
         background: rgb(0 0 0 / 20%);
       }
 
+      :root:not(.dark):not(.solarized-light) .calendar-add-panel {
+        background: #eef2f8;
+      }
+
       .calendar-add-panel .calendar-add-title,
       .calendar-add-panel .calendar-add-field-label {
         color: color-mix(in srgb, #ffffff 88%, var(--ink) 12%);
+      }
+
+      :root:not(.dark) .calendar-add-panel .calendar-add-title,
+      :root:not(.dark) .calendar-add-panel .calendar-add-field-label {
+        color: color-mix(in srgb, var(--ink) 92%, #000000 8%);
       }
 
       .calendar-add-shell.is-editing .calendar-add-trigger {
@@ -1103,20 +1137,20 @@
       .calendar-action-btn {
         height: 1.95rem;
         justify-content: center;
-        border: 1px solid rgba(168, 182, 255, 0.5);
+        border: 1px solid var(--calendar-action-border);
         border-radius: 20px;
-        color: color-mix(in srgb, #ffffff 90%, var(--ink) 10%);
-        background: #1a1d33;
+        color: var(--calendar-action-ink);
+        background: var(--calendar-action-bg);
       }
 
       .calendar-action-btn:hover {
-        background: #252a47;
-        border-color: rgba(168, 182, 255, 0.5);
+        background: var(--calendar-action-bg-hover);
+        border-color: var(--calendar-action-border);
       }
 
       .calendar-action-btn:active {
-        background: #30365a;
-        border-color: rgba(168, 182, 255, 0.5);
+        background: var(--calendar-action-bg-active);
+        border-color: var(--calendar-action-border);
       }
 
       #calendar-switcher.is-expanded #header-calendars-btn {
