@@ -755,7 +755,7 @@
 
       #calendar-scroll[data-calendar-type="signal-3"] td.day-cell .day-state-row {
         top: calc(50% + 5px);
-        transition: none;
+        transition: opacity 0.18s ease-in-out;
       }
 
       #calendar-scroll[data-calendar-type="signal-3"] td.day-cell:hover .day-state-row {
@@ -865,6 +865,30 @@
         opacity: 1;
         transform: none;
         background: #3b82f6;
+      }
+
+      #calendar-scroll[data-calendar-type="notes"] td.day-cell[data-day-note]:not(.selected-day):hover::before {
+        content: attr(data-day-note-preview);
+        position: absolute;
+        left: 0.32rem;
+        right: 1.02rem;
+        top: calc(1.04rem + 3px);
+        bottom: 0.32rem;
+        display: block;
+        white-space: pre-line;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: calc(0.47rem + 2px);
+        font-weight: 500;
+        line-height: 1.1;
+        letter-spacing: 0.01em;
+        color: color-mix(in srgb, var(--ink) 66%, transparent);
+        opacity: 0.28;
+        transform: none;
+        pointer-events: none;
       }
 
       td.day-cell[data-day-checked="true"]::after {
@@ -2062,6 +2086,11 @@
 
       :root.dark #calendar-scroll[data-calendar-type="notes"] td.day-cell[data-day-note]:not(.selected-day)::after {
         background: #60a5fa;
+      }
+
+      :root.dark #calendar-scroll[data-calendar-type="notes"] td.day-cell[data-day-note]:not(.selected-day):hover::before {
+        color: color-mix(in srgb, #dbeafe 74%, transparent);
+        opacity: 0.24;
       }
 
       :root.dark td.day-cell.selected-day {

@@ -141,6 +141,20 @@ function hasDayNoteValue(noteValue) {
   return normalizeDayNoteValue(noteValue).trim().length > 0;
 }
 
+function normalizeDayNotePreview(noteValue) {
+  const normalizedNote = normalizeDayNoteValue(noteValue);
+  if (!normalizedNote) {
+    return "";
+  }
+
+  return normalizedNote
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .join("\n")
+    .trim();
+}
+
 function normalizeCalendarDayEntries(rawDayStates) {
   if (!rawDayStates || typeof rawDayStates !== "object") {
     return {};
@@ -288,6 +302,7 @@ function applyDayStateToCell(cell, dayState) {
   delete cell.dataset.dayScore;
   delete cell.dataset.dayChecked;
   delete cell.dataset.dayNote;
+  delete cell.dataset.dayNotePreview;
 
   const stateButtons = cell.querySelectorAll(".day-state-btn");
   stateButtons.forEach((button) => {
@@ -304,6 +319,7 @@ function applyDayScoreToCell(cell, dayScore) {
   delete cell.dataset.dayState;
   delete cell.dataset.dayChecked;
   delete cell.dataset.dayNote;
+  delete cell.dataset.dayNotePreview;
   if (normalizedScore === SCORE_UNASSIGNED) {
     delete cell.dataset.dayScore;
   } else {
@@ -318,6 +334,7 @@ function applyDayCheckToCell(cell, dayCheckValue) {
   delete cell.dataset.dayState;
   delete cell.dataset.dayScore;
   delete cell.dataset.dayNote;
+  delete cell.dataset.dayNotePreview;
   if (isChecked) {
     cell.dataset.dayChecked = "true";
   } else {
@@ -334,8 +351,10 @@ function applyDayNoteToCell(cell, dayNoteValue) {
   delete cell.dataset.dayChecked;
   if (hasDayNoteValue(normalizedNote)) {
     cell.dataset.dayNote = "1";
+    cell.dataset.dayNotePreview = normalizeDayNotePreview(normalizedNote);
   } else {
     delete cell.dataset.dayNote;
+    delete cell.dataset.dayNotePreview;
   }
   syncDayScoreControls(cell, SCORE_UNASSIGNED);
   syncDayNoteControl(cell, normalizedNote);
@@ -1398,6 +1417,9 @@ export function initInfiniteCalendar(container) {
     if (!dayCell || !container.contains(dayCell)) return;
     if (activeCalendarType === CALENDAR_TYPE_CHECK) {
       toggleDayCheckForCell(dayCell);
+      return;
+    }
+    if (activeCalendarType === CALENDAR_TYPE_SIGNAL) {
       return;
     }
     selectDayCell(dayCell);
