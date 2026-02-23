@@ -12,6 +12,7 @@ const SCORE_DISPLAY_NUMBER = "number";
 const SCORE_DISPLAY_HEATMAP = "heatmap";
 const SCORE_DISPLAY_NUMBER_HEATMAP = "number-heatmap";
 const DEFAULT_SCORE_DISPLAY = SCORE_DISPLAY_NUMBER;
+const MAX_PINNED_CALENDARS = 3;
 const CALENDAR_BUTTON_LABEL = "Open calendars";
 const CALENDAR_CLOSE_LABEL = "Close calendars";
 const CALENDAR_COLOR_HEX_BY_KEY = Object.freeze({
@@ -241,15 +242,16 @@ function createCalendarTypeIconElement(calendarType) {
   return typeIcon;
 }
 
-function createCalendarOptionElement(calendar, isActive) {
+function createCalendarOptionElement(calendar, isActive, { showPinToggle = true } = {}) {
+  const isPinned = normalizeCalendarPinned(calendar.pinned);
   const optionButton = document.createElement("button");
   optionButton.type = "button";
   optionButton.className = "calendar-option calendar-option-main";
   optionButton.classList.toggle("is-active", isActive);
-  optionButton.classList.toggle("is-pinned", normalizeCalendarPinned(calendar.pinned));
+  optionButton.classList.toggle("is-pinned", isPinned);
   optionButton.dataset.calendarType = calendar.type;
   optionButton.dataset.calendarId = calendar.id;
-  optionButton.dataset.calendarPinned = String(normalizeCalendarPinned(calendar.pinned));
+  optionButton.dataset.calendarPinned = String(isPinned);
   optionButton.setAttribute("aria-label", calendar.name);
   optionButton.setAttribute("aria-pressed", String(isActive));
 
@@ -275,18 +277,18 @@ function createCalendarOptionElement(calendar, isActive) {
   }
 
   left.append(dot, nameWrap);
-  const pinToggle = document.createElement("span");
-  pinToggle.className = "calendar-option-pin";
-  pinToggle.setAttribute("aria-hidden", "true");
-  pinToggle.title = normalizeCalendarPinned(calendar.pinned)
-    ? "Unpin calendar"
-    : "Pin calendar";
-  const pinIcon = document.createElement("span");
-  pinIcon.classList.add("calendar-option-pin-icon");
-  pinIcon.setAttribute("aria-hidden", "true");
-  pinToggle.append(pinIcon);
-
-  optionButton.append(left, pinToggle);
+  optionButton.append(left);
+  if (showPinToggle) {
+    const pinToggle = document.createElement("span");
+    pinToggle.className = "calendar-option-pin";
+    pinToggle.setAttribute("aria-hidden", "true");
+    pinToggle.title = isPinned ? "Unpin calendar" : "Pin calendar";
+    const pinIcon = document.createElement("span");
+    pinIcon.classList.add("calendar-option-pin-icon");
+    pinIcon.setAttribute("aria-hidden", "true");
+    pinToggle.append(pinIcon);
+    optionButton.append(pinToggle);
+  }
   return optionButton;
 }
 
@@ -543,6 +545,12 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
     });
   };
 
+  const countPinnedCalendars = (calendarCollection = []) => {
+    return calendarCollection.reduce((pinnedCount, calendar) => {
+      return pinnedCount + (normalizeCalendarPinned(calendar?.pinned) ? 1 : 0);
+    }, 0);
+  };
+
   const toggleCalendarPinnedAndReorder = (calendarId) => {
     if (!calendarId) {
       return false;
@@ -555,6 +563,10 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
 
     const targetCalendar = calendars[targetIndex];
     const nextPinnedState = !normalizeCalendarPinned(targetCalendar.pinned);
+    if (nextPinnedState && countPinnedCalendars(calendars) >= MAX_PINNED_CALENDARS) {
+      return false;
+    }
+
     const toggledCalendar = {
       ...targetCalendar,
       pinned: nextPinnedState,
@@ -700,10 +712,18 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
 
   const renderCalendarList = () => {
     const previousRectsById = readCalendarOptionRects();
+    const pinnedCalendarsCount = countPinnedCalendars(calendars);
+    const hasReachedPinnedLimit = pinnedCalendarsCount >= MAX_PINNED_CALENDARS;
     const fragment = document.createDocumentFragment();
     calendars.forEach((calendar) => {
       const isActive = calendar.id === activeCalendarId;
-      fragment.appendChild(createCalendarOptionElement(calendar, isActive));
+      const isPinned = normalizeCalendarPinned(calendar.pinned);
+      const showPinToggle = isPinned || !hasReachedPinnedLimit;
+      fragment.appendChild(
+        createCalendarOptionElement(calendar, isActive, {
+          showPinToggle,
+        }),
+      );
     });
     calendarList.replaceChildren(fragment);
     animateCalendarListReorder(previousRectsById);
