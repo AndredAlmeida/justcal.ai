@@ -51,8 +51,8 @@ const FIRST_RUN_SEED_CALENDARS = Object.freeze([
     pinned: true,
   },
   {
-    id: "thoughts",
-    name: "Thoughts",
+    id: "todos",
+    name: "TODOs",
     type: CALENDAR_TYPE_NOTES,
     color: "orange",
     pinned: true,
@@ -104,11 +104,11 @@ function buildFirstRunSeedDayStates() {
   assignFirstRunSeedDayValues(energyTrackerDayValues, [19, 20], "red");
   assignFirstRunSeedDayValues(energyTrackerDayValues, [21, 22, 23], "green");
 
-  const thoughtsDayValues = {
-    [toFirstRunSeedDayKey(20)]: "Test Thought 1",
-    [toFirstRunSeedDayKey(21)]: "Yet another note",
+  const todosDayValues = {
+    [toFirstRunSeedDayKey(20)]: "Test TODO 1",
+    [toFirstRunSeedDayKey(21)]: "Yet another TODO",
     [toFirstRunSeedDayKey(22)]:
-      "Super long long long long long long long long long long long long note.",
+      "Super long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long long todo.",
   };
 
   const workoutIntensityDayValues = {};
@@ -120,7 +120,7 @@ function buildFirstRunSeedDayStates() {
     "sleep-score": sleepScoreDayValues,
     "took-pills": tookPillsDayValues,
     "energy-tracker": energyTrackerDayValues,
-    thoughts: thoughtsDayValues,
+    todos: todosDayValues,
     "workout-intensity": workoutIntensityDayValues,
   };
 }
