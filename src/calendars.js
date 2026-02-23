@@ -293,9 +293,14 @@ function createCalendarOptionElement(calendar, isActive, { showPinToggle = true 
 }
 
 function createHeaderPinnedCalendarElement(calendar) {
-  const chip = document.createElement("span");
+  const chip = document.createElement("button");
   chip.className = "header-pinned-calendar";
-  chip.setAttribute("aria-hidden", "true");
+  chip.type = "button";
+  chip.dataset.calendarId = calendar.id;
+  chip.style.setProperty(
+    "--header-pinned-calendar-color",
+    resolveCalendarColorHex(calendar.color, DEFAULT_CALENDAR_COLOR),
+  );
 
   const dot = document.createElement("span");
   dot.className = "calendar-current-dot";
@@ -307,7 +312,9 @@ function createHeaderPinnedCalendarElement(calendar) {
 
   const name = document.createElement("span");
   name.className = "calendar-current-name";
-  name.textContent = sanitizeCalendarName(calendar.name) || DEFAULT_CALENDAR_LABEL;
+  const safeName = sanitizeCalendarName(calendar.name) || DEFAULT_CALENDAR_LABEL;
+  name.textContent = safeName;
+  chip.setAttribute("aria-label", `Select calendar ${safeName}`);
 
   chip.append(dot, name);
   return chip;
@@ -663,6 +670,24 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
     return rectsById;
   };
 
+  const readHeaderPinnedCalendarRects = () => {
+    const rectsById = new Map();
+    if (!headerPinnedCalendars) {
+      return rectsById;
+    }
+
+    headerPinnedCalendars
+      .querySelectorAll("button.header-pinned-calendar[data-calendar-id]")
+      .forEach((calendarButton) => {
+        const calendarId = calendarButton.dataset.calendarId || "";
+        if (!calendarId) {
+          return;
+        }
+        rectsById.set(calendarId, calendarButton.getBoundingClientRect());
+      });
+    return rectsById;
+  };
+
   const animateCalendarListReorder = (previousRectsById) => {
     if (!previousRectsById || previousRectsById.size <= 0) {
       return;
@@ -733,6 +758,95 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
       });
   };
 
+  const animateHeaderPinnedCalendarsReorder = (previousRectsById) => {
+    if (!headerPinnedCalendars || !previousRectsById || previousRectsById.size <= 0) {
+      return;
+    }
+
+    if (
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return;
+    }
+
+    headerPinnedCalendars
+      .querySelectorAll("button.header-pinned-calendar[data-calendar-id]")
+      .forEach((calendarButton) => {
+        const calendarId = calendarButton.dataset.calendarId || "";
+        if (!calendarId) {
+          return;
+        }
+
+        const previousRect = previousRectsById.get(calendarId);
+        if (!previousRect) {
+          if (typeof calendarButton.animate === "function") {
+            calendarButton.animate(
+              [
+                {
+                  opacity: 0,
+                  transform: "translateY(-5px) scale(0.96)",
+                },
+                {
+                  opacity: 1,
+                  transform: "translateY(0) scale(1)",
+                },
+              ],
+              {
+                duration: 220,
+                easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+                fill: "none",
+              },
+            );
+          }
+          return;
+        }
+
+        const nextRect = calendarButton.getBoundingClientRect();
+        const deltaX = previousRect.left - nextRect.left;
+        const deltaY = previousRect.top - nextRect.top;
+        if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) {
+          return;
+        }
+
+        if (typeof calendarButton.animate === "function") {
+          calendarButton.animate(
+            [
+              {
+                transform: `translate(${deltaX}px, ${deltaY}px)`,
+              },
+              {
+                transform: "translate(0, 0)",
+              },
+            ],
+            {
+              duration: 250,
+              easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+              fill: "none",
+            },
+          );
+          return;
+        }
+
+        calendarButton.style.transition = "none";
+        calendarButton.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+        // Force style flush so fallback transition starts from previous position.
+        void calendarButton.offsetWidth;
+        calendarButton.style.transition = "transform 250ms cubic-bezier(0.22, 1, 0.36, 1)";
+        calendarButton.style.transform = "translate(0, 0)";
+        const cleanupTransition = (event) => {
+          if (event.propertyName !== "transform") {
+            return;
+          }
+          calendarButton.style.transition = "";
+          calendarButton.style.transform = "";
+          calendarButton.removeEventListener("transitionend", cleanupTransition);
+        };
+        calendarButton.addEventListener("transitionend", cleanupTransition);
+      });
+  };
+
   const renderCalendarList = () => {
     const previousRectsById = readCalendarOptionRects();
     const pinnedCalendarsCount = countPinnedCalendars(calendars);
@@ -757,6 +871,7 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
       return;
     }
 
+    const previousRectsById = readHeaderPinnedCalendarRects();
     const fragment = document.createDocumentFragment();
     calendars.forEach((calendar) => {
       if (!normalizeCalendarPinned(calendar.pinned) || calendar.id === activeCalendarId) {
@@ -765,6 +880,7 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
       fragment.appendChild(createHeaderPinnedCalendarElement(calendar));
     });
     headerPinnedCalendars.replaceChildren(fragment);
+    animateHeaderPinnedCalendarsReorder(previousRectsById);
   };
 
   const syncSwitcherButton = () => {
@@ -947,6 +1063,32 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
       isExpanded: false,
     });
   });
+
+  if (headerPinnedCalendars) {
+    headerPinnedCalendars.addEventListener("click", (event) => {
+      const pinnedButton = event.target.closest(
+        "button.header-pinned-calendar[data-calendar-id]",
+      );
+      if (!pinnedButton || !headerPinnedCalendars.contains(pinnedButton)) {
+        return;
+      }
+
+      const nextCalendarId = pinnedButton.dataset.calendarId || "";
+      const didChangeCalendar = setActiveCalendarId(nextCalendarId);
+      if (!didChangeCalendar) {
+        return;
+      }
+
+      resetAddEditor();
+      resetEditEditor();
+      setCalendarSwitcherExpanded({
+        switcher,
+        button,
+        activeCalendar: resolveActiveCalendar(),
+        isExpanded: false,
+      });
+    });
+  }
 
   if (addTrigger && addShell && addEditor) {
     addTrigger.addEventListener("click", () => {

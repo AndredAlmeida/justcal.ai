@@ -196,6 +196,8 @@
       }
 
       .header-pinned-calendar {
+        --header-pinned-calendar-color: #3b82f6;
+        appearance: none;
         height: 1.9rem;
         min-width: 0;
         border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
@@ -211,7 +213,43 @@
         background: color-mix(in srgb, var(--panel) 95%, #ffffff 5%);
         box-shadow: 0 1px 5px rgba(15, 23, 42, 0.09);
         opacity: 0.9;
-        pointer-events: none;
+        cursor: pointer;
+        transition:
+          background-color 0.16s ease,
+          border-color 0.16s ease,
+          box-shadow 0.2s ease,
+          opacity 0.16s ease,
+          transform 0.16s ease;
+      }
+
+      .header-pinned-calendar:hover {
+        transform: translateY(-1px);
+        opacity: 1;
+        border-color: color-mix(
+          in srgb,
+          var(--line) 56%,
+          var(--header-pinned-calendar-color) 44%
+        );
+        background: linear-gradient(
+          180deg,
+          color-mix(in srgb, var(--panel) 84%, var(--header-pinned-calendar-color) 16%) 0%,
+          color-mix(in srgb, var(--panel) 95%, #ffffff 5%) 100%
+        );
+        box-shadow:
+          0 3px 8px color-mix(in srgb, #0f172a 80%, transparent),
+          0 0 0 1px
+            color-mix(in srgb, var(--header-pinned-calendar-color) 28%, transparent);
+      }
+
+      .header-pinned-calendar:active {
+        transform: translateY(0);
+      }
+
+      .header-pinned-calendar:focus-visible {
+        outline: 2px solid
+          color-mix(in srgb, var(--header-pinned-calendar-color) 64%, #ffffff 36%);
+        outline-offset: 2px;
+        opacity: 1;
       }
 
       .header-pinned-calendar .calendar-current-name {
@@ -2740,7 +2778,7 @@
       <header>
         <img class="brand-logo" src="/logo-top.png" alt="Just Calendar" />
         <div id="calendar-switcher">
-          <div id="header-pinned-calendars" aria-hidden="true"></div>
+          <div id="header-pinned-calendars"></div>
           <div id="calendar-options" aria-label="Calendar options">
             <p class="calendar-options-title">Calendars</p>
             <div class="calendar-options-divider" aria-hidden="true"></div>
