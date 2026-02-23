@@ -208,6 +208,15 @@ function loadCalendarsState() {
   }
 }
 
+export function getStoredActiveCalendar() {
+  const state = loadCalendarsState();
+  const activeCalendar =
+    state.calendars.find((calendar) => calendar.id === state.activeCalendarId) ||
+    state.calendars[0] ||
+    getDefaultCalendar();
+  return activeCalendar;
+}
+
 function saveCalendarsState({ calendars, activeCalendarId }) {
   try {
     localStorage.setItem(

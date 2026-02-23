@@ -562,7 +562,7 @@ function buildMonthCard(monthStart, getDayValueByKey, todayDayKey, calendarType)
   return card;
 }
 
-export function initInfiniteCalendar(container) {
+export function initInfiniteCalendar(container, { initialActiveCalendar } = {}) {
   const now = new Date();
   const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const todayDayKey = formatDayKey(now.getFullYear(), now.getMonth(), now.getDate());
@@ -592,9 +592,29 @@ export function initInfiniteCalendar(container) {
   let fastScrollFrame = 0;
   let zoomResetTimer = 0;
   let zoomResetHandler = null;
-  let activeCalendarId = DEFAULT_CALENDAR_ID;
-  let activeCalendarType = DEFAULT_CALENDAR_TYPE;
-  let activeCalendarDisplay = DEFAULT_SCORE_DISPLAY;
+  const initialCalendarIdRaw =
+    typeof initialActiveCalendar === "string"
+      ? initialActiveCalendar
+      : typeof initialActiveCalendar?.id === "string"
+        ? initialActiveCalendar.id
+        : "";
+  const initialCalendarTypeRaw =
+    typeof initialActiveCalendar === "object" && initialActiveCalendar !== null
+      ? initialActiveCalendar.type
+      : DEFAULT_CALENDAR_TYPE;
+  const initialCalendarType = normalizeCalendarType(initialCalendarTypeRaw);
+  const initialCalendarDisplayRaw =
+    typeof initialActiveCalendar === "object" && initialActiveCalendar !== null
+      ? initialActiveCalendar.display
+      : DEFAULT_SCORE_DISPLAY;
+  const initialCalendarDisplay =
+    initialCalendarType === CALENDAR_TYPE_SCORE
+      ? normalizeScoreDisplay(initialCalendarDisplayRaw)
+      : DEFAULT_SCORE_DISPLAY;
+  let activeCalendarId =
+    initialCalendarIdRaw.trim() || DEFAULT_CALENDAR_ID;
+  let activeCalendarType = initialCalendarType;
+  let activeCalendarDisplay = initialCalendarDisplay;
   let shouldPanZoomOnDaySelect = true;
   let shouldExpandOnDaySelect = true;
   let hoveredNotesCell = null;

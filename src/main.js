@@ -1,5 +1,5 @@
 import { initInfiniteCalendar } from "./calendar.js";
-import { setupCalendarSwitcher } from "./calendars.js";
+import { getStoredActiveCalendar, setupCalendarSwitcher } from "./calendars.js";
 import { setupTweakControls } from "./tweak-controls.js";
 import { setupThemeToggle } from "./theme.js";
 
@@ -9,6 +9,7 @@ const returnToCurrentButton = document.getElementById("return-to-current");
 const themeToggleButton = document.getElementById("theme-toggle");
 const mobileDebugToggleButton = document.getElementById("mobile-debug-toggle");
 const rootStyle = document.documentElement.style;
+const initialActiveCalendar = getStoredActiveCalendar();
 
 const MIN_FADE_DELTA = 0;
 const MAX_FADE_DELTA = 100;
@@ -129,7 +130,11 @@ function setupAppBackgroundFadeSync() {
   });
 }
 
-const calendarApi = calendarContainer ? initInfiniteCalendar(calendarContainer) : null;
+const calendarApi = calendarContainer
+  ? initInfiniteCalendar(calendarContainer, {
+      initialActiveCalendar,
+    })
+  : null;
 
 function getCurrentMonthKey(nowDate = new Date()) {
   return `${nowDate.getFullYear()}-${nowDate.getMonth()}`;
