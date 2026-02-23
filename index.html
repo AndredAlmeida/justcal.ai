@@ -1431,7 +1431,7 @@
       }
 
       #calendar-switcher.is-expanded #calendar-options {
-        max-height: min(calc(100dvh - 7rem), 32rem);
+        max-height: calc(100dvh - 7rem);
         opacity: 1;
         transform: translateY(0);
         pointer-events: auto;
@@ -1439,19 +1439,19 @@
       }
 
       #calendar-switcher.is-expanded.is-adding #calendar-options {
-        max-height: min(calc(100dvh - 5.5rem), 37.2rem);
+        max-height: calc(100dvh - 5.5rem);
       }
 
       #calendar-switcher.is-expanded.is-adding.has-score-display #calendar-options {
-        max-height: min(calc(100dvh - 3.2rem), 44rem);
+        max-height: calc(100dvh - 3.2rem);
       }
 
       #calendar-switcher.is-expanded.is-editing-calendar #calendar-options {
-        max-height: min(calc(100dvh - 5.5rem), 37.2rem);
+        max-height: calc(100dvh - 5.5rem);
       }
 
       #calendar-switcher.is-expanded.is-editing-calendar.has-score-display #calendar-options {
-        max-height: min(calc(100dvh - 3.2rem), 40rem);
+        max-height: calc(100dvh - 3.2rem);
       }
 
       .calendar-options-title {
@@ -1979,7 +1979,7 @@
         flex: 0 0 calc(1.06rem * 1.2);
         display: inline-grid;
         place-items: center;
-        background: var(--color-dot, #9ca3af);
+        background: var(--color-dot, #22c55e);
       }
 
       .calendar-color-option.is-active .calendar-color-dot {
@@ -2710,23 +2710,23 @@
 
         #calendar-switcher.is-expanded #calendar-options {
           width: min(12.5rem, 72vw);
-          max-height: min(calc(100dvh - 6.4rem), 30rem);
+          max-height: calc(100dvh - 6.4rem);
         }
 
         #calendar-switcher.is-expanded.is-adding #calendar-options {
-          max-height: min(calc(100dvh - 5.2rem), 35.2rem);
+          max-height: calc(100dvh - 5.2rem);
         }
 
         #calendar-switcher.is-expanded.is-adding.has-score-display #calendar-options {
-          max-height: min(calc(100dvh - 2.2rem), 40rem);
+          max-height: calc(100dvh - 2.2rem);
         }
 
         #calendar-switcher.is-expanded.is-editing-calendar #calendar-options {
-          max-height: min(calc(100dvh - 5.2rem), 35.2rem);
+          max-height: calc(100dvh - 5.2rem);
         }
 
         #calendar-switcher.is-expanded.is-editing-calendar.has-score-display #calendar-options {
-          max-height: min(calc(100dvh - 2.2rem), 37.8rem);
+          max-height: calc(100dvh - 2.2rem);
         }
 
         #theme-switcher.is-expanded #theme-options {
@@ -2863,13 +2863,13 @@
                       <button
                         type="button"
                         class="calendar-color-option is-active"
-                        data-color="gray"
-                        aria-label="Gray"
+                        data-color="green"
+                        aria-label="Green"
                         aria-pressed="true"
                       >
                         <span
                           class="calendar-color-dot"
-                          style="--color-dot: #9ca3af"
+                          style="--color-dot: #22c55e"
                           aria-hidden="true"
                         ></span>
                       </button>
@@ -3018,13 +3018,13 @@
                         <button
                           type="button"
                           class="calendar-color-option"
-                          data-color="gray"
-                          aria-label="Gray"
+                          data-color="green"
+                          aria-label="Green"
                           aria-pressed="false"
                         >
                           <span
                             class="calendar-color-dot"
-                            style="--color-dot: #9ca3af"
+                            style="--color-dot: #22c55e"
                             aria-hidden="true"
                           ></span>
                         </button>

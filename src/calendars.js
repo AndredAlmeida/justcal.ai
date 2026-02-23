@@ -2,7 +2,7 @@ const CALENDARS_STORAGE_KEY = "justcal-calendars";
 const DEFAULT_CALENDAR_LABEL = "Energy Tracker";
 const DEFAULT_CALENDAR_ID = "energy-tracker";
 const DEFAULT_CALENDAR_COLOR = "blue";
-const DEFAULT_NEW_CALENDAR_COLOR = "gray";
+const DEFAULT_NEW_CALENDAR_COLOR = "green";
 const CALENDAR_TYPE_SIGNAL = "signal-3";
 const CALENDAR_TYPE_SCORE = "score";
 const CALENDAR_TYPE_CHECK = "check";
@@ -17,7 +17,7 @@ const MOBILE_PIN_DISABLED_QUERY = "(max-width: 640px)";
 const CALENDAR_BUTTON_LABEL = "Open calendars";
 const CALENDAR_CLOSE_LABEL = "Close calendars";
 const CALENDAR_COLOR_HEX_BY_KEY = Object.freeze({
-  gray: "#9ca3af",
+  green: "#22c55e",
   red: "#ef4444",
   orange: "#f97316",
   yellow: "#facc15",
@@ -69,6 +69,9 @@ function normalizeCalendarType(calendarType, fallbackType = DEFAULT_CALENDAR_TYP
 }
 
 function normalizeCalendarColor(colorKey, fallbackColor = DEFAULT_NEW_CALENDAR_COLOR) {
+  if (typeof colorKey === "string" && colorKey.trim().toLowerCase() === "gray") {
+    return "green";
+  }
   if (typeof colorKey === "string" && hasOwnProperty(CALENDAR_COLOR_HEX_BY_KEY, colorKey)) {
     return colorKey;
   }
