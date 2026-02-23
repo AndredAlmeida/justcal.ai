@@ -13,6 +13,7 @@ const SCORE_DISPLAY_HEATMAP = "heatmap";
 const SCORE_DISPLAY_NUMBER_HEATMAP = "number-heatmap";
 const DEFAULT_SCORE_DISPLAY = SCORE_DISPLAY_NUMBER;
 const MAX_PINNED_CALENDARS = 5;
+const MOBILE_PIN_DISABLED_QUERY = "(max-width: 640px)";
 const CALENDAR_BUTTON_LABEL = "Open calendars";
 const CALENDAR_CLOSE_LABEL = "Close calendars";
 const CALENDAR_COLOR_HEX_BY_KEY = Object.freeze({
@@ -364,6 +365,16 @@ function setCalendarSwitcherExpanded({ switcher, button, activeCalendar, isExpan
       ? CALENDAR_CLOSE_LABEL
       : `${CALENDAR_BUTTON_LABEL} (${activeCalendarLabel})`,
   );
+}
+
+function isPinningDisabledOnMobileViewport() {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
+    return false;
+  }
+  return window.matchMedia(MOBILE_PIN_DISABLED_QUERY).matches;
 }
 
 function setAddCalendarEditorExpanded({
@@ -958,11 +969,13 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
     const previousRectsById = readCalendarOptionRects();
     const pinnedCalendarsCount = countPinnedCalendars(calendars);
     const hasReachedPinnedLimit = pinnedCalendarsCount >= MAX_PINNED_CALENDARS;
+    const isPinningDisabledOnMobile = isPinningDisabledOnMobileViewport();
     const fragment = document.createDocumentFragment();
     calendars.forEach((calendar) => {
       const isActive = calendar.id === activeCalendarId;
       const isPinned = normalizeCalendarPinned(calendar.pinned);
-      const showPinToggle = isPinned || !hasReachedPinnedLimit;
+      const showPinToggle =
+        !isPinningDisabledOnMobile && (isPinned || !hasReachedPinnedLimit);
       fragment.appendChild(
         createCalendarOptionElement(calendar, isActive, {
           showPinToggle,
@@ -1131,11 +1144,26 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
   });
   notifyActiveCalendarChange();
 
+  if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+    const pinningMobileMediaQuery = window.matchMedia(MOBILE_PIN_DISABLED_QUERY);
+    const syncPinningOnViewportChange = () => {
+      syncCalendarUi();
+    };
+    if (typeof pinningMobileMediaQuery.addEventListener === "function") {
+      pinningMobileMediaQuery.addEventListener("change", syncPinningOnViewportChange);
+    } else if (typeof pinningMobileMediaQuery.addListener === "function") {
+      pinningMobileMediaQuery.addListener(syncPinningOnViewportChange);
+    }
+  }
+
   calendarList.addEventListener("click", (event) => {
     const pinToggle = event.target.closest(".calendar-option-pin");
     if (pinToggle && calendarList.contains(pinToggle)) {
       event.preventDefault();
       event.stopPropagation();
+      if (isPinningDisabledOnMobileViewport()) {
+        return;
+      }
       const pinButton = pinToggle.closest("button.calendar-option[data-calendar-id]");
       if (!pinButton || !calendarList.contains(pinButton)) {
         return;
