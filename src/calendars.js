@@ -250,6 +250,9 @@ function createCalendarTypeIconElement(calendarType) {
   } else if (normalizedCalendarType === CALENDAR_TYPE_NOTES) {
     typeIcon.classList.add("is-notes");
     typeIcon.textContent = "";
+  } else {
+    typeIcon.classList.add("is-signal");
+    typeIcon.textContent = "";
   }
 
   return typeIcon;

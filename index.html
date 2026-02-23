@@ -1567,6 +1567,23 @@
         border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
       }
 
+      .calendar-option-type-icon.is-signal {
+        display: inline-grid;
+        place-items: center;
+        color: color-mix(in srgb, var(--ink) 74%, #ffffff 26%);
+      }
+
+      .calendar-option-type-icon.is-signal::before {
+        content: "";
+        width: 0.16rem;
+        height: 0.16rem;
+        border-radius: 999px;
+        background: currentColor;
+        box-shadow:
+          -0.18rem -0.18rem 0 currentColor,
+          0.18rem 0.18rem 0 currentColor;
+      }
+
       .calendar-option-type-icon.is-score {
         display: inline-grid;
         place-items: center;
@@ -1580,12 +1597,10 @@
       }
 
       .calendar-option-type-icon.is-score::before {
-        content: "";
-        width: 0.76rem;
-        height: 0.76rem;
-        background-color: currentColor;
-        -webkit-mask: url("/score-calendar-icon.svg") center / contain no-repeat;
-        mask: url("/score-calendar-icon.svg") center / contain no-repeat;
+        content: "\2605";
+        font-size: 0.58rem;
+        line-height: 1;
+        font-weight: 700;
       }
 
       .calendar-option-type-icon.is-check {
