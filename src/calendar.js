@@ -559,6 +559,7 @@ export function initInfiniteCalendar(container) {
   let shouldExpandOnDaySelect = true;
   let hoveredNotesCell = null;
   let notesHoverPreviewTimer = 0;
+  let notesInputFocusTimer = 0;
 
   function ensureActiveCalendarDayStates() {
     if (!dayStatesByCalendarId[activeCalendarId]) {
@@ -575,6 +576,38 @@ export function initInfiniteCalendar(container) {
     if (!notesHoverPreviewTimer) return;
     clearTimeout(notesHoverPreviewTimer);
     notesHoverPreviewTimer = 0;
+  }
+
+  function clearNotesInputFocusTimer() {
+    if (!notesInputFocusTimer) return;
+    clearTimeout(notesInputFocusTimer);
+    notesInputFocusTimer = 0;
+  }
+
+  function focusNotesInputForCell(cell, { immediate = false } = {}) {
+    clearNotesInputFocusTimer();
+    if (activeCalendarType !== CALENDAR_TYPE_NOTES) return;
+    if (!cell || !cell.isConnected || !container.contains(cell)) return;
+
+    const runFocus = () => {
+      notesInputFocusTimer = 0;
+      if (activeCalendarType !== CALENDAR_TYPE_NOTES) return;
+      if (!selectedCell || selectedCell !== cell || !cell.classList.contains("selected-day")) {
+        return;
+      }
+      const noteInput = cell.querySelector(".day-note-input");
+      if (!(noteInput instanceof HTMLTextAreaElement)) return;
+      noteInput.focus({ preventScroll: true });
+      const inputTextLength = noteInput.value.length;
+      noteInput.setSelectionRange(inputTextLength, inputTextLength);
+    };
+
+    if (immediate) {
+      runFocus();
+      return;
+    }
+
+    notesInputFocusTimer = window.setTimeout(runFocus, 140);
   }
 
   function setNotesHoverPreviewVisible(isVisible) {
@@ -1278,6 +1311,7 @@ export function initInfiniteCalendar(container) {
 
   function clearSelectedDayCell() {
     hideNotesHoverPreview();
+    clearNotesInputFocusTimer();
     if (!selectedCell) return false;
 
     const previousCell = selectedCell;
@@ -1337,11 +1371,13 @@ export function initInfiniteCalendar(container) {
           clearTableSelectionLayout(table);
         }
         applyCanvasZoomForCell(selectedCell);
+        focusNotesInputForCell(selectedCell);
       });
       return;
     }
 
     applyCanvasZoomForCell(selectedCell);
+    focusNotesInputForCell(selectedCell);
   }
 
   function appendFutureMonths(count) {

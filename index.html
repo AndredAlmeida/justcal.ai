@@ -604,7 +604,7 @@
         font: inherit;
         font-size: 0.76rem;
         line-height: 1.35;
-        resize: vertical;
+        resize: none;
         padding: 0.5rem 0.56rem;
         outline: none;
         user-select: text;
@@ -834,9 +834,45 @@
       }
 
       #calendar-scroll[data-calendar-type="notes"] td.day-cell.selected-day .day-note-row {
+        left: 0;
+        right: 0;
+        top: 1.72rem;
+        bottom: 0;
+        width: auto;
+        transform: none;
         opacity: 1;
         pointer-events: auto;
         transition-delay: 0.12s;
+      }
+
+      #calendar-scroll[data-calendar-type="notes"] td.day-cell.selected-day .day-note-input {
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        max-height: none;
+        border: 0;
+        border-radius: 0;
+        outline: none;
+        box-shadow: none;
+        background: color-mix(in srgb, var(--bg-bottom) 74%, #000000 26%);
+        color: color-mix(in srgb, var(--ink) 92%, #ffffff 8%);
+        font-size: calc(0.76rem - 2px);
+      }
+
+      #calendar-scroll[data-calendar-type="notes"] td.day-cell.selected-day .day-note-input:focus {
+        border: 0;
+        outline: none;
+        box-shadow: none;
+      }
+
+      #calendar-scroll[data-calendar-type="notes"] td.day-cell.selected-day {
+        background: linear-gradient(
+          180deg,
+          color-mix(in srgb, var(--muted) 76%, var(--panel) 24%) 0%,
+          color-mix(in srgb, var(--muted) 62%, var(--panel) 38%) 56%,
+          color-mix(in srgb, var(--bg-bottom) 55%, var(--muted) 45%) 100%
+        );
+        color: color-mix(in srgb, var(--ink) 92%, #ffffff 8%);
       }
 
       #calendar-scroll[data-calendar-type="check"] td.day-cell .day-state-row,
@@ -2140,6 +2176,16 @@
         opacity: 0.24;
       }
 
+      :root.dark #calendar-scroll[data-calendar-type="notes"] td.day-cell.selected-day {
+        background: linear-gradient(
+          180deg,
+          color-mix(in srgb, var(--muted) 72%, var(--panel) 28%) 0%,
+          color-mix(in srgb, var(--muted) 56%, var(--panel) 44%) 58%,
+          color-mix(in srgb, var(--bg-bottom) 68%, var(--muted) 32%) 100%
+        );
+        color: color-mix(in srgb, var(--ink) 95%, #ffffff 5%);
+      }
+
       :root.dark td.day-cell.selected-day {
         background: var(
           --selected-day-dark-gradient,
@@ -2271,11 +2317,20 @@
           width: min(92%, 11.6rem);
         }
 
+        #calendar-scroll[data-calendar-type="notes"] td.day-cell.selected-day .day-note-row {
+          top: 1.5rem;
+        }
+
         .day-note-input {
           min-height: 4.9rem;
           font-size: 0.62rem;
           padding: 0.36rem 0.42rem;
           border-radius: 10px;
+        }
+
+        #calendar-scroll[data-calendar-type="notes"] td.day-cell.selected-day .day-note-input {
+          font-size: calc(0.62rem - 2px);
+          border-radius: 0;
         }
 
         .notes-hover-preview {
