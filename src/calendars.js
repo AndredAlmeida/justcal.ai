@@ -8,6 +8,9 @@ const CALENDAR_TYPE_SCORE = "score";
 const CALENDAR_TYPE_CHECK = "check";
 const CALENDAR_TYPE_NOTES = "notes";
 const DEFAULT_CALENDAR_TYPE = CALENDAR_TYPE_SIGNAL;
+const SCORE_DISPLAY_NUMBER = "number";
+const SCORE_DISPLAY_HEATMAP = "heatmap";
+const DEFAULT_SCORE_DISPLAY = SCORE_DISPLAY_NUMBER;
 const CALENDAR_BUTTON_LABEL = "Open calendars";
 const CALENDAR_CLOSE_LABEL = "Close calendars";
 const CALENDAR_COLOR_HEX_BY_KEY = Object.freeze({
@@ -68,6 +71,24 @@ function normalizeCalendarColor(colorKey, fallbackColor = DEFAULT_NEW_CALENDAR_C
   return fallbackColor;
 }
 
+function normalizeScoreDisplay(
+  displayMode,
+  fallbackDisplay = DEFAULT_SCORE_DISPLAY,
+) {
+  if (typeof displayMode !== "string") {
+    return fallbackDisplay;
+  }
+
+  const normalizedDisplayMode = displayMode.trim().toLowerCase();
+  if (normalizedDisplayMode === SCORE_DISPLAY_NUMBER) {
+    return SCORE_DISPLAY_NUMBER;
+  }
+  if (normalizedDisplayMode === SCORE_DISPLAY_HEATMAP) {
+    return SCORE_DISPLAY_HEATMAP;
+  }
+  return fallbackDisplay;
+}
+
 function resolveCalendarColorHex(colorKey, fallbackColor = DEFAULT_CALENDAR_COLOR) {
   const normalizedColor = normalizeCalendarColor(colorKey, fallbackColor);
   return CALENDAR_COLOR_HEX_BY_KEY[normalizedColor];
@@ -103,11 +124,17 @@ function normalizeStoredCalendar(rawCalendar, index, usedIds) {
 
   usedIds.add(normalizedId);
 
+  const normalizedCalendarType = normalizeCalendarType(rawCalendar.type);
+  const normalizedScoreDisplay = normalizeScoreDisplay(rawCalendar.display);
+
   return {
     id: normalizedId,
     name: normalizedName,
-    type: normalizeCalendarType(rawCalendar.type),
+    type: normalizedCalendarType,
     color: normalizeCalendarColor(rawCalendar.color),
+    ...(normalizedCalendarType === CALENDAR_TYPE_SCORE
+      ? { display: normalizedScoreDisplay }
+      : {}),
   };
 }
 
@@ -276,6 +303,8 @@ function setAddCalendarEditorExpanded({
   addEditor,
   addNameInput,
   addTypeSelect,
+  addDisplayField,
+  addDisplaySelect,
   isExpanded,
 } = {}) {
   if (!switcher || !addShell || !addEditor) return;
@@ -291,6 +320,26 @@ function setAddCalendarEditorExpanded({
     if (addTypeSelect) {
       addTypeSelect.value = DEFAULT_CALENDAR_TYPE;
     }
+    if (addDisplaySelect) {
+      addDisplaySelect.value = DEFAULT_SCORE_DISPLAY;
+    }
+    addShell.classList.remove("has-score-display");
+    switcher.classList.remove("has-score-display");
+  }
+
+  if (addTypeSelect && addDisplayField) {
+    const selectedCalendarType = normalizeCalendarType(addTypeSelect.value);
+    const shouldShowDisplayField = selectedCalendarType === CALENDAR_TYPE_SCORE;
+    switcher.classList.toggle("has-score-display", isExpanded && shouldShowDisplayField);
+    addShell.classList.toggle("has-score-display", isExpanded && shouldShowDisplayField);
+    addDisplayField.hidden = !shouldShowDisplayField;
+    addDisplayField.setAttribute("aria-hidden", String(!shouldShowDisplayField));
+    if (!shouldShowDisplayField && addDisplaySelect) {
+      addDisplaySelect.value = DEFAULT_SCORE_DISPLAY;
+    }
+  } else {
+    switcher.classList.remove("has-score-display");
+    addShell.classList.remove("has-score-display");
   }
 }
 
@@ -322,6 +371,8 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
   const addCancelButton = document.getElementById("calendar-add-cancel");
   const addNameInput = document.getElementById("new-calendar-name");
   const addTypeSelect = document.getElementById("new-calendar-type");
+  const addDisplayField = document.getElementById("new-calendar-display-field");
+  const addDisplaySelect = document.getElementById("new-calendar-display");
   const addColorOptions = document.getElementById("new-calendar-color");
   const addColorButtons = addColorOptions
     ? [...addColorOptions.querySelectorAll(".calendar-color-option")]
@@ -527,6 +578,8 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
       addEditor,
       addNameInput,
       addTypeSelect,
+      addDisplayField,
+      addDisplaySelect,
       isExpanded: false,
     });
     resetAddColor();
@@ -632,11 +685,26 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
         addEditor,
         addNameInput,
         addTypeSelect,
+        addDisplayField,
+        addDisplaySelect,
         isExpanded: true,
       });
       addNameInput?.focus();
     });
   }
+
+  addTypeSelect?.addEventListener("change", () => {
+    setAddCalendarEditorExpanded({
+      switcher,
+      addShell,
+      addEditor,
+      addNameInput,
+      addTypeSelect,
+      addDisplayField,
+      addDisplaySelect,
+      isExpanded: addShell?.classList.contains("is-editing") === true,
+    });
+  });
 
   if (editTrigger && editShell && editEditor) {
     editTrigger.addEventListener("click", () => {
@@ -782,12 +850,18 @@ export function setupCalendarSwitcher(button, { onActiveCalendarChange } = {}) {
       const selectedColorButton = addColorButtons.find((candidateButton) => {
         return candidateButton.classList.contains("is-active");
       });
+      const nextCalendarType = normalizeCalendarType(addTypeSelect?.value);
 
       const nextCalendar = {
         id: createUniqueCalendarId(nextName, usedIds),
         name: nextName,
-        type: normalizeCalendarType(addTypeSelect?.value),
+        type: nextCalendarType,
         color: normalizeCalendarColor(selectedColorButton?.dataset.color),
+        ...(nextCalendarType === CALENDAR_TYPE_SCORE
+          ? {
+              display: normalizeScoreDisplay(addDisplaySelect?.value),
+            }
+          : {}),
       };
 
       calendars = [...calendars, nextCalendar];

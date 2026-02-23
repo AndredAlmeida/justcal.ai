@@ -1334,7 +1334,11 @@
       }
 
       #calendar-switcher.is-expanded.is-adding #calendar-options {
-        max-height: min(calc(100dvh - 6rem), 36rem);
+        max-height: min(calc(100dvh - 5.5rem), 37.2rem);
+      }
+
+      #calendar-switcher.is-expanded.is-adding.has-score-display #calendar-options {
+        max-height: min(calc(100dvh - 3.2rem), 44rem);
       }
 
       .calendar-options-title {
@@ -1666,6 +1670,10 @@
         padding-bottom: 3px;
       }
 
+      .calendar-add-shell.is-editing.has-score-display .calendar-add-editor {
+        max-height: calc(24.6rem + 6px);
+      }
+
       .calendar-edit-shell.is-editing .calendar-edit-editor {
         max-height: calc(22rem + 6px);
         opacity: 1;
@@ -1689,6 +1697,10 @@
       .calendar-add-field {
         display: grid;
         gap: 0.32rem;
+      }
+
+      .calendar-add-field[hidden] {
+        display: none;
       }
 
       .calendar-add-field + .calendar-add-field {
@@ -2486,7 +2498,11 @@
         }
 
         #calendar-switcher.is-expanded.is-adding #calendar-options {
-          max-height: min(calc(100dvh - 5.8rem), 34rem);
+          max-height: min(calc(100dvh - 5.2rem), 35.2rem);
+        }
+
+        #calendar-switcher.is-expanded.is-adding.has-score-display #calendar-options {
+          max-height: min(calc(100dvh - 2.2rem), 40rem);
         }
 
         #theme-switcher.is-expanded #theme-options {
@@ -2596,6 +2612,18 @@
                       <option value="score">Score</option>
                       <option value="check">Check</option>
                       <option value="notes">Notes</option>
+                    </select>
+                  </label>
+                  <label
+                    id="new-calendar-display-field"
+                    class="calendar-add-field"
+                    for="new-calendar-display"
+                    hidden
+                  >
+                    <span class="calendar-add-field-label">Display</span>
+                    <select id="new-calendar-display" class="calendar-add-select">
+                      <option value="number">Number</option>
+                      <option value="heatmap">Heatmap</option>
                     </select>
                   </label>
                   <div class="calendar-add-field" aria-label="Color">
