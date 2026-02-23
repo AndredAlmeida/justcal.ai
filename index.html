@@ -25,6 +25,7 @@
         --calendar-action-bg-active: #d1dcf3;
         --calendar-action-border: rgba(71, 93, 140, 0.38);
         --calendar-action-ink: #23314f;
+        --day-cell-hover-bg: rgba(29, 78, 216, 0.1);
         --score-slider-track: color-mix(in srgb, #94a3b8 56%, #e2e8f0 44%);
         --score-slider-active: #4f46e5;
         --score-slider-thumb: #4f46e5;
@@ -46,6 +47,7 @@
         --calendar-action-bg-active: #2c3d55;
         --calendar-action-border: rgba(148, 163, 184, 0.5);
         --calendar-action-ink: #e8edf9;
+        --day-cell-hover-bg: rgba(71, 85, 105, 0.28);
         --score-slider-track: color-mix(in srgb, #0f172a 60%, #334155 40%);
         --score-slider-active: #60a5fa;
         --score-slider-thumb: #60a5fa;
@@ -67,6 +69,7 @@
         --calendar-action-bg-active: #30365a;
         --calendar-action-border: rgba(168, 182, 255, 0.5);
         --calendar-action-ink: #eef2ff;
+        --day-cell-hover-bg: rgba(99, 117, 188, 0.28);
         --score-slider-track: color-mix(in srgb, #252b48 68%, #3a466d 32%);
         --score-slider-active: #7aa2f7;
         --score-slider-thumb: #7dcfff;
@@ -88,6 +91,7 @@
         --calendar-action-bg-active: #1b6071;
         --calendar-action-border: rgba(147, 161, 161, 0.55);
         --calendar-action-ink: #d8e2e2;
+        --day-cell-hover-bg: rgba(42, 161, 152, 0.24);
         --score-slider-track: color-mix(in srgb, #073642 64%, #586e75 36%);
         --score-slider-active: #2aa198;
         --score-slider-thumb: #2aa198;
@@ -109,6 +113,7 @@
         --calendar-action-bg-active: #d0c5aa;
         --calendar-action-border: rgba(88, 110, 117, 0.45);
         --calendar-action-ink: #445861;
+        --day-cell-hover-bg: rgba(38, 139, 210, 0.1);
         --score-slider-track: color-mix(in srgb, #93a1a1 58%, #eee8d5 42%);
         --score-slider-active: #268bd2;
         --score-slider-thumb: #268bd2;
@@ -1069,7 +1074,7 @@
       }
 
       td.day-cell:hover:not(.selected-day):not(.today-cell) {
-        background: rgba(29, 78, 216, 0.1);
+        background: var(--day-cell-hover-bg, rgba(29, 78, 216, 0.1));
       }
 
       td.day-cell.today-cell:not(.selected-day) {
@@ -2191,10 +2196,6 @@
 
       :root.dark td.empty {
         color: #96a4ba;
-      }
-
-      :root.dark td.day-cell:hover:not(.selected-day):not(.today-cell) {
-        background: rgba(30, 64, 175, 0.3);
       }
 
       :root.dark td.day-cell.today-cell:not(.selected-day) {
