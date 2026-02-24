@@ -47,6 +47,17 @@
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/icon.svg" />
     <title>Just Calendar - Track Habits, Scores, Notes, and Routines</title>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-NWX6ELVVTS"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag() {
+        dataLayer.push(arguments);
+      }
+      gtag("js", new Date());
+
+      gtag("config", "G-NWX6ELVVTS");
+    </script>
     <style>
       :root {
         --panel: #ffffff;
@@ -851,10 +862,11 @@
         position: sticky;
         left: 0;
         z-index: 1;
-        min-width: 6.4rem;
-        width: 6.4rem;
-        text-align: left;
-        padding-left: 0.52rem;
+        min-width: 3.85rem;
+        width: 3.85rem;
+        text-align: center;
+        padding: 0.18rem 0.28rem;
+        white-space: nowrap;
         font-size: 0.72rem;
         font-weight: 760;
         letter-spacing: 0.01em;
@@ -867,15 +879,47 @@
       }
 
       .year-grid .year-month-summary {
-        width: 8.1rem;
-        min-width: 8.1rem;
+        width: 5.33rem;
+        min-width: 5.33rem;
         vertical-align: middle;
-        text-align: left;
+        text-align: center;
         padding: 0.12rem 0.45rem;
         font-size: 0.65rem;
         letter-spacing: 0.01em;
         color: color-mix(in srgb, var(--ink) 72%, transparent);
         background: color-mix(in srgb, var(--panel) 82%, var(--muted) 18%);
+      }
+
+      .year-month-summary-signal {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.16rem;
+      }
+
+      .year-month-summary-signal-tracked {
+        display: block;
+      }
+
+      .year-month-summary-signal-row {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: nowrap;
+        white-space: nowrap;
+        gap: 0.26rem;
+      }
+
+      .year-month-summary-signal-metric {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.18rem;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .year-month-summary-signal .year-legend-dot {
+        width: 0.46rem;
+        height: 0.46rem;
+        box-shadow: none;
       }
 
       .year-grid tr.year-month-row-secondary .year-day-cell:not(.has-score-fill):not(.is-empty) {
@@ -1652,15 +1696,22 @@
       }
 
       #calendar-scroll[data-calendar-type="notes"] td.day-cell[data-day-note]:not(.selected-day)::after {
-        left: auto;
-        top: 0.34rem;
-        right: 0.34rem;
-        width: 0.56rem;
-        height: 0.56rem;
-        border-radius: 999px;
+        content: "\270E";
+        left: 50%;
+        top: 50%;
+        right: auto;
+        width: auto;
+        min-width: 0;
+        height: auto;
+        padding: 0;
+        border-radius: 0;
         opacity: 1;
-        transform: none;
-        background: #3b82f6;
+        transform: translate(-50%, -50%);
+        background: transparent;
+        color: var(--active-calendar-color, #3b82f6);
+        font-size: 1.56rem;
+        font-weight: 760;
+        line-height: 1;
       }
 
       #calendar-scroll[data-calendar-type="notes"] td.day-cell[data-day-note]:not(.selected-day):hover::before {
@@ -3106,7 +3157,7 @@
       }
 
       :root.dark #calendar-scroll[data-calendar-type="notes"] td.day-cell[data-day-note]:not(.selected-day)::after {
-        background: #60a5fa;
+        color: var(--active-calendar-color, #60a5fa);
       }
 
       :root.dark #calendar-scroll[data-calendar-type="notes"] td.day-cell[data-day-note]:not(.selected-day):hover::before {
@@ -3438,17 +3489,34 @@
         }
 
         .year-grid .year-month-name {
-          min-width: 5.2rem;
-          width: 5.2rem;
+          min-width: 3.25rem;
+          width: 3.25rem;
           font-size: 0.62rem;
-          padding-left: 0.38rem;
+          padding: 0.15rem 0.22rem;
         }
 
         .year-grid .year-month-summary {
-          min-width: 7rem;
-          width: 7rem;
+          min-width: 4.75rem;
+          width: 4.75rem;
           font-size: 0.55rem;
           padding: 0.1rem 0.3rem;
+        }
+
+        .year-month-summary-signal {
+          gap: 0.14rem;
+        }
+
+        .year-month-summary-signal-row {
+          gap: 0.2rem;
+        }
+
+        .year-month-summary-signal-metric {
+          gap: 0.14rem;
+        }
+
+        .year-month-summary-signal .year-legend-dot {
+          width: 0.4rem;
+          height: 0.4rem;
         }
 
         .year-day-number {

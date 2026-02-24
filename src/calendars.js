@@ -26,13 +26,13 @@ const CALENDAR_COLOR_HEX_BY_KEY = Object.freeze({
   cyan: "#22d3ee",
   blue: "#3b82f6",
 });
-const FIRST_RUN_SEED_ACTIVE_CALENDAR_ID = "energy-tracker";
+const FIRST_RUN_SEED_ACTIVE_CALENDAR_ID = "sleep-score";
 const FIRST_RUN_SEED_CALENDARS = Object.freeze([
   {
     id: "sleep-score",
     name: "Sleep Score",
     type: CALENDAR_TYPE_SCORE,
-    color: "cyan",
+    color: "blue",
     pinned: true,
     display: SCORE_DISPLAY_NUMBER_HEATMAP,
   },
@@ -47,7 +47,7 @@ const FIRST_RUN_SEED_CALENDARS = Object.freeze([
     id: "energy-tracker",
     name: "Energy Tracker",
     type: CALENDAR_TYPE_SIGNAL,
-    color: "blue",
+    color: "red",
     pinned: true,
   },
   {

@@ -506,6 +506,7 @@ function renderYearView(activeCalendar, yearValue = YEAR_VIEW_YEAR) {
   }
 
   const summaryHeaderCell = document.createElement("th");
+  summaryHeaderCell.className = "year-month-summary";
   summaryHeaderCell.scope = "col";
   summaryHeaderCell.textContent = "Month Summary";
   headerRow.appendChild(summaryHeaderCell);
@@ -703,7 +704,37 @@ function renderYearView(activeCalendar, yearValue = YEAR_VIEW_YEAR) {
     monthSummaryCell.className = "year-month-summary";
     monthSummaryCell.rowSpan = 2;
     if (normalizedCalendarType === CALENDAR_TYPE_SIGNAL) {
-      monthSummaryCell.textContent = `Tracked ${monthStats.trackedDays} · G ${monthStats.greenDays} · Y ${monthStats.yellowDays} · R ${monthStats.redDays}`;
+      const signalSummary = document.createElement("span");
+      signalSummary.className = "year-month-summary-signal";
+
+      const trackedLabel = document.createElement("span");
+      trackedLabel.className = "year-month-summary-signal-tracked";
+      trackedLabel.textContent = `Tracked ${monthStats.trackedDays}`;
+      signalSummary.appendChild(trackedLabel);
+
+      const metricsRow = document.createElement("span");
+      metricsRow.className = "year-month-summary-signal-row";
+
+      ["green", "yellow", "red"].forEach((signalState) => {
+        const metric = document.createElement("span");
+        metric.className = "year-month-summary-signal-metric";
+
+        const metricDot = document.createElement("span");
+        metricDot.className = "year-legend-dot";
+        metricDot.style.setProperty(
+          "--legend-color",
+          SIGNAL_STATE_COLOR_HEX_BY_KEY[signalState] || activeCalendarColor,
+        );
+
+        const metricCount = document.createElement("span");
+        metricCount.textContent = String(monthStats[`${signalState}Days`] ?? 0);
+
+        metric.append(metricDot, metricCount);
+        metricsRow.appendChild(metric);
+      });
+
+      signalSummary.appendChild(metricsRow);
+      monthSummaryCell.appendChild(signalSummary);
     } else if (normalizedCalendarType === CALENDAR_TYPE_CHECK) {
       monthSummaryCell.textContent = `${monthStats.checkedDays} checked`;
     } else if (normalizedCalendarType === CALENDAR_TYPE_SCORE) {

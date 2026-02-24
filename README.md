@@ -6,6 +6,7 @@ Entirely created via a Telegram bot connected to Codex, using Ductor: https://gi
 ## Features
 
 - Infinite month timeline with lazy-loading in both directions.
+- Month/Year view toggle with a full-year grid, per-month summaries, and year navigation.
 - Multiple calendar types: `Semaphore`, `Score`, `Check`, and `Notes`.
 - Score calendar supports `Number`, `Heatmap`, and `Number + Heatmap` display modes.
 - Notes calendar includes inline previews, delayed hover preview, and focused day editor.
