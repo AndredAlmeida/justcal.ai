@@ -19,6 +19,10 @@ const LEGACY_SELECTION_EXPANSION_STORAGE_KEY = "justcal-selection-expansion";
 const MIN_FADE_DELTA = 0;
 const MAX_FADE_DELTA = 100;
 const DEFAULT_FADE_DELTA = 25;
+const MOBILE_LAYOUT_QUERY = "(max-width: 640px)";
+const MOBILE_DEFAULT_CAMERA_ZOOM = 2.2;
+const MOBILE_DEFAULT_CELL_EXPANSION_X = 2.75;
+const MOBILE_DEFAULT_CELL_EXPANSION_Y = 3.0;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -160,22 +164,33 @@ export function setupTweakControls({
     LEGACY_SELECTION_EXPANSION_STORAGE_KEY,
   );
   const legacyExpansionValue = legacyCellExpansion ?? legacySelectionExpansion;
+  const isMobileLayout =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
+  const defaultCameraZoom = isMobileLayout ? MOBILE_DEFAULT_CAMERA_ZOOM : DEFAULT_CAMERA_ZOOM;
+  const defaultCellExpansionX = isMobileLayout
+    ? MOBILE_DEFAULT_CELL_EXPANSION_X
+    : DEFAULT_CELL_EXPANSION_X;
+  const defaultCellExpansionY = isMobileLayout
+    ? MOBILE_DEFAULT_CELL_EXPANSION_Y
+    : DEFAULT_CELL_EXPANSION_Y;
   const initialCameraZoom = clamp(
-    storedCameraZoom ?? legacyExpansionValue ?? DEFAULT_CAMERA_ZOOM,
+    storedCameraZoom ?? legacyExpansionValue ?? defaultCameraZoom,
     MIN_CAMERA_ZOOM,
     MAX_CAMERA_ZOOM,
   );
 
   const storedCellExpansionX = getStoredNumericValue(CELL_EXPANSION_X_STORAGE_KEY);
   const initialCellExpansionX = clamp(
-    storedCellExpansionX ?? legacyExpansionValue ?? DEFAULT_CELL_EXPANSION_X,
+    storedCellExpansionX ?? legacyExpansionValue ?? defaultCellExpansionX,
     MIN_CELL_EXPANSION_X,
     MAX_CELL_EXPANSION_X,
   );
 
   const storedCellExpansionY = getStoredNumericValue(CELL_EXPANSION_Y_STORAGE_KEY);
   const initialCellExpansionY = clamp(
-    storedCellExpansionY ?? legacyExpansionValue ?? DEFAULT_CELL_EXPANSION_Y,
+    storedCellExpansionY ?? legacyExpansionValue ?? defaultCellExpansionY,
     MIN_CELL_EXPANSION_Y,
     MAX_CELL_EXPANSION_Y,
   );

@@ -1542,7 +1542,11 @@
         padding: 0;
         border-radius: 999px;
         border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
-        background: color-mix(in srgb, var(--muted) 84%, var(--panel) 16%);
+        background: color-mix(
+          in srgb,
+          color-mix(in srgb, var(--muted) 84%, var(--panel) 16%) 50%,
+          transparent 50%
+        );
         box-shadow:
           0 2px 8px color-mix(in srgb, #0f172a 12%, transparent),
           inset 0 1px 0 color-mix(in srgb, #ffffff 50%, transparent);
@@ -3125,7 +3129,11 @@
 
       :root.dark #calendar-scroll[data-calendar-type="score"] td.day-cell[data-day-score]:not(.selected-day)::after {
         border-color: color-mix(in srgb, #64748b 58%, transparent);
-        background: color-mix(in srgb, var(--muted) 62%, #0b1224 38%);
+        background: color-mix(
+          in srgb,
+          color-mix(in srgb, var(--muted) 62%, #0b1224 38%) 50%,
+          transparent 50%
+        );
         box-shadow:
           0 2px 10px rgba(2, 6, 23, 0.45),
           inset 0 1px 0 color-mix(in srgb, #ffffff 14%, transparent);
@@ -3255,6 +3263,15 @@
 
         #calendar-view-toggle {
           --view-toggle-pad: 0.15rem;
+          grid-template-columns: 1fr;
+        }
+
+        #calendar-view-toggle::before {
+          display: none;
+        }
+
+        #view-year-btn {
+          display: none;
         }
 
         .calendar-view-btn {
@@ -3271,6 +3288,10 @@
 
         #calendar-switcher {
           gap: 0.3rem;
+        }
+
+        #header-pinned-calendars {
+          display: none;
         }
 
         .header-pinned-calendar {
@@ -3316,6 +3337,12 @@
         #calendar-scroll[data-calendar-type="signal-3"] .day-state-btn {
           width: calc(0.9rem * 0.6);
           height: calc(0.9rem * 0.6);
+        }
+
+        #calendar-scroll[data-calendar-type="score"] td.day-cell[data-day-score]:not(.selected-day)::after {
+          width: calc(1.8rem * 0.7);
+          height: calc(1.8rem * 0.7);
+          font-size: calc(0.96rem * 0.7);
         }
 
         .day-state-row {
@@ -3531,19 +3558,48 @@
         }
 
         #calendar-switcher.is-expanded.is-adding #calendar-options {
+          width: min(14.4rem, 86vw);
           max-height: calc(100dvh - 5.2rem);
         }
 
         #calendar-switcher.is-expanded.is-adding.has-score-display #calendar-options {
+          width: min(14.4rem, 86vw);
           max-height: calc(100dvh - 2.2rem);
         }
 
         #calendar-switcher.is-expanded.is-editing-calendar #calendar-options {
+          width: min(14.4rem, 86vw);
           max-height: calc(100dvh - 5.2rem);
         }
 
         #calendar-switcher.is-expanded.is-editing-calendar.has-score-display #calendar-options {
+          width: min(14.4rem, 86vw);
           max-height: calc(100dvh - 2.2rem);
+        }
+
+        #calendar-edit-editor,
+        #calendar-edit-editor .calendar-edit-form,
+        #calendar-edit-editor .calendar-add-panel {
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+        }
+
+        #calendar-edit-editor .calendar-add-color-options {
+          flex-wrap: wrap;
+          row-gap: 0.24rem;
+        }
+
+        #calendar-add-editor,
+        #calendar-add-editor .calendar-add-panel {
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+        }
+
+        #calendar-add-editor .calendar-add-color-options {
+          flex-wrap: wrap;
+          row-gap: 0.24rem;
         }
 
         #theme-switcher.is-expanded #theme-options {

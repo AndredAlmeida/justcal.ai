@@ -56,6 +56,7 @@ const CHECK_MARKED = true;
 const NOTES_HOVER_PREVIEW_DELAY_MS = 1000;
 const NOTES_HOVER_PREVIEW_GAP_PX = 8;
 const NOTES_HOVER_PREVIEW_VIEWPORT_PADDING_PX = 8;
+const MOBILE_LAYOUT_QUERY = "(max-width: 640px)";
 const CALENDAR_COLOR_HEX_BY_KEY = Object.freeze({
   green: "#22c55e",
   red: "#ef4444",
@@ -710,6 +711,28 @@ export function initInfiniteCalendar(container, { initialActiveCalendar } = {}) 
     }
 
     notesInputFocusTimer = window.setTimeout(runFocus, 140);
+  }
+
+  function isMobileLayout() {
+    if (typeof window === "undefined") return false;
+    if (typeof window.matchMedia === "function") {
+      return window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
+    }
+    return window.innerWidth <= 640;
+  }
+
+  function shouldPreserveNotesViewportOnResize() {
+    if (activeCalendarType !== CALENDAR_TYPE_NOTES || !isMobileLayout()) {
+      return false;
+    }
+    const focusedElement = document.activeElement;
+    if (!(focusedElement instanceof HTMLTextAreaElement)) {
+      return false;
+    }
+    if (!focusedElement.classList.contains("day-note-input")) {
+      return false;
+    }
+    return container.contains(focusedElement);
   }
 
   function setNotesHoverPreviewVisible(isVisible) {
@@ -1726,6 +1749,11 @@ export function initInfiniteCalendar(container, { initialActiveCalendar } = {}) 
       return;
     }
 
+    const dayNoteControl = event.target.closest("textarea.day-note-input");
+    if (dayNoteControl && container.contains(dayNoteControl)) {
+      return;
+    }
+
     const dayStateButton = event.target.closest("button.day-state-btn");
     if (dayStateButton && container.contains(dayStateButton)) {
       const dayCell = dayStateButton.closest("td.day-cell");
@@ -1759,6 +1787,9 @@ export function initInfiniteCalendar(container, { initialActiveCalendar } = {}) 
   });
 
   window.addEventListener("resize", () => {
+    if (shouldPreserveNotesViewportOnResize()) {
+      return;
+    }
     const cards = Array.from(container.querySelectorAll(".month-card"));
     applyDefaultLayoutForCards(cards, { refreshBase: true });
     reapplySelectionFocus();

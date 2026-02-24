@@ -18,6 +18,7 @@ const initialActiveCalendar = getStoredActiveCalendar();
 
 const VIEW_MODE_MONTH = "month";
 const VIEW_MODE_YEAR = "year";
+const MOBILE_LAYOUT_QUERY = "(max-width: 640px)";
 const YEAR_VIEW_YEAR = new Date().getFullYear();
 const CALENDAR_DAY_STATES_STORAGE_KEY = "justcal-calendar-day-states";
 const LEGACY_DAY_STATE_STORAGE_KEY = "justcal-day-states";
@@ -98,6 +99,20 @@ function rgbString(color) {
 
 let colorProbeElement = null;
 let currentFadeDelta = 1;
+const mobileLayoutMedia =
+  typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia(MOBILE_LAYOUT_QUERY)
+    : null;
+
+function isMobileLayout() {
+  if (mobileLayoutMedia) {
+    return mobileLayoutMedia.matches;
+  }
+  if (typeof window !== "undefined") {
+    return window.innerWidth <= 640;
+  }
+  return false;
+}
 
 function getColorProbeElement() {
   if (colorProbeElement) return colorProbeElement;
@@ -842,16 +857,36 @@ let currentViewMode = VIEW_MODE_MONTH;
 let activeYearViewYear = YEAR_VIEW_YEAR;
 
 function syncViewToggleButtons(isYearView) {
+  const mobileLayout = isMobileLayout();
   if (calendarViewToggle) {
     calendarViewToggle.dataset.activeView = isYearView ? VIEW_MODE_YEAR : VIEW_MODE_MONTH;
   }
   if (monthViewButton) {
-    monthViewButton.classList.toggle("is-active", !isYearView);
-    monthViewButton.setAttribute("aria-pressed", String(!isYearView));
+    if (mobileLayout) {
+      monthViewButton.classList.add("is-active");
+      monthViewButton.setAttribute("aria-pressed", "true");
+      monthViewButton.textContent = isYearView ? "Year" : "Month";
+      monthViewButton.setAttribute(
+        "aria-label",
+        isYearView ? "Switch to month view" : "Switch to year view",
+      );
+    } else {
+      monthViewButton.classList.toggle("is-active", !isYearView);
+      monthViewButton.setAttribute("aria-pressed", String(!isYearView));
+      monthViewButton.textContent = "Month";
+      monthViewButton.removeAttribute("aria-label");
+    }
   }
   if (yearViewButton) {
-    yearViewButton.classList.toggle("is-active", isYearView);
-    yearViewButton.setAttribute("aria-pressed", String(isYearView));
+    if (mobileLayout) {
+      yearViewButton.setAttribute("aria-hidden", "true");
+      yearViewButton.tabIndex = -1;
+    } else {
+      yearViewButton.classList.toggle("is-active", isYearView);
+      yearViewButton.setAttribute("aria-pressed", String(isYearView));
+      yearViewButton.removeAttribute("aria-hidden");
+      yearViewButton.tabIndex = 0;
+    }
   }
 }
 
@@ -964,6 +999,12 @@ if (calendarContainer && returnToCurrentButton) {
 
 if (monthViewButton) {
   monthViewButton.addEventListener("click", () => {
+    if (isMobileLayout()) {
+      setCalendarViewMode(
+        currentViewMode === VIEW_MODE_YEAR ? VIEW_MODE_MONTH : VIEW_MODE_YEAR,
+      );
+      return;
+    }
     setCalendarViewMode(VIEW_MODE_MONTH);
   });
 }
@@ -972,6 +1013,17 @@ if (yearViewButton) {
   yearViewButton.addEventListener("click", () => {
     setCalendarViewMode(VIEW_MODE_YEAR);
   });
+}
+
+if (mobileLayoutMedia) {
+  const handleLayoutMediaChange = () => {
+    syncViewToggleButtons(currentViewMode === VIEW_MODE_YEAR);
+  };
+  if (typeof mobileLayoutMedia.addEventListener === "function") {
+    mobileLayoutMedia.addEventListener("change", handleLayoutMediaChange);
+  } else if (typeof mobileLayoutMedia.addListener === "function") {
+    mobileLayoutMedia.addListener(handleLayoutMediaChange);
+  }
 }
 
 setupTweakControls({
