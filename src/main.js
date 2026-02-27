@@ -1122,6 +1122,12 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
   const driveBusyOverlay = document.getElementById("drive-busy-overlay");
   const GOOGLE_CONNECTED_COOKIE_NAME = "justcal_google_connected";
   const GOOGLE_AUTH_LOG_PREFIX = "[JustCalendar][GoogleDriveAuth]";
+  const GOOGLE_DRIVE_FILES_API_URL = "https://www.googleapis.com/drive/v3/files";
+  const GOOGLE_DRIVE_UPLOAD_API_URL = "https://www.googleapis.com/upload/drive/v3/files";
+  const GOOGLE_DRIVE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
+  const GOOGLE_DRIVE_JSON_MIME_TYPE = "application/json";
+  const JUSTCALENDAR_DRIVE_FOLDER_NAME = "JustCalendar.ai";
+  const JUSTCALENDAR_CONFIG_FILE_NAME = "justcalendar.json";
   let isGoogleDriveConnected = false;
   let isGoogleDriveConfigured = true;
   let googleSub = "";
@@ -1561,6 +1567,768 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     }, {});
   };
 
+  const escapeDriveQueryValue = (value) => String(value ?? "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+
+  const toNestedCalendarDayEntries = (flatDayEntries) => {
+    if (!isObjectLike(flatDayEntries)) {
+      return {};
+    }
+
+    const nestedDayEntries = {};
+    const sortedDayEntries = Object.entries(flatDayEntries).sort(([leftDayKey], [rightDayKey]) =>
+      leftDayKey.localeCompare(rightDayKey),
+    );
+    for (const [dayKey, dayValue] of sortedDayEntries) {
+      const dayKeyMatch = dayKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!dayKeyMatch) {
+        continue;
+      }
+      const [, yearKey, monthKey, dayToken] = dayKeyMatch;
+      if (!nestedDayEntries[yearKey]) {
+        nestedDayEntries[yearKey] = {};
+      }
+      if (!nestedDayEntries[yearKey][monthKey]) {
+        nestedDayEntries[yearKey][monthKey] = {};
+      }
+      nestedDayEntries[yearKey][monthKey][dayToken] = dayValue;
+    }
+    return nestedDayEntries;
+  };
+
+  const requestGoogleAccessTokenFromBackend = async () => {
+    const response = await fetch("/api/auth/google/access-token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    const payload = await readResponsePayload(response);
+    const accessToken =
+      payload && typeof payload.accessToken === "string" ? payload.accessToken.trim() : "";
+    if (!response.ok || !accessToken) {
+      return {
+        ok: false,
+        status: response.status,
+        statusText: response.statusText,
+        payload,
+      };
+    }
+    return {
+      ok: true,
+      accessToken,
+      payload,
+    };
+  };
+
+  const requestDriveApi = async ({ accessToken, url, method = "GET", headers = {}, body } = {}) => {
+    const response = await fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        ...headers,
+      },
+      ...(typeof body === "undefined" ? {} : { body }),
+    });
+    const payload = await readResponsePayload(response);
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        statusText: response.statusText,
+        payload,
+      };
+    }
+    return {
+      ok: true,
+      payload,
+      response,
+    };
+  };
+
+  const findDriveFileByNameInFolderFromBrowser = async ({ accessToken, folderId, fileName }) => {
+    if (!folderId || !fileName) {
+      return {
+        ok: false,
+        error: "missing_file_lookup_params",
+      };
+    }
+
+    const escapedFileName = escapeDriveQueryValue(fileName);
+    const escapedFolderId = escapeDriveQueryValue(folderId);
+    const listUrl = new URL(GOOGLE_DRIVE_FILES_API_URL);
+    listUrl.searchParams.set(
+      "q",
+      `name = '${escapedFileName}' and '${escapedFolderId}' in parents and trashed = false`,
+    );
+    listUrl.searchParams.set("spaces", "drive");
+    listUrl.searchParams.set("fields", "files(id,name,mimeType)");
+    listUrl.searchParams.set("pageSize", "1");
+
+    const listResult = await requestDriveApi({
+      accessToken,
+      url: listUrl,
+    });
+    if (!listResult.ok) {
+      return {
+        ok: false,
+        error: "file_lookup_failed",
+        status: listResult.status,
+        statusText: listResult.statusText,
+        payload: listResult.payload,
+      };
+    }
+
+    const existingFile =
+      Array.isArray(listResult.payload?.files) && listResult.payload.files.length > 0
+        ? listResult.payload.files[0]
+        : null;
+    if (!existingFile || typeof existingFile.id !== "string" || !existingFile.id.trim()) {
+      return {
+        ok: true,
+        found: false,
+      };
+    }
+
+    return {
+      ok: true,
+      found: true,
+      fileId: existingFile.id.trim(),
+    };
+  };
+
+  const ensureDriveFolderFromBrowser = async (accessToken) => {
+    const escapedFolderName = escapeDriveQueryValue(JUSTCALENDAR_DRIVE_FOLDER_NAME);
+    const listUrl = new URL(GOOGLE_DRIVE_FILES_API_URL);
+    listUrl.searchParams.set(
+      "q",
+      `name = '${escapedFolderName}' and mimeType = '${GOOGLE_DRIVE_FOLDER_MIME_TYPE}' and trashed = false`,
+    );
+    listUrl.searchParams.set("spaces", "drive");
+    listUrl.searchParams.set("fields", "files(id,name,mimeType)");
+    listUrl.searchParams.set("pageSize", "1");
+
+    const lookupResult = await requestDriveApi({
+      accessToken,
+      url: listUrl,
+    });
+    if (!lookupResult.ok) {
+      return {
+        ok: false,
+        error: "folder_lookup_failed",
+        status: lookupResult.status,
+        statusText: lookupResult.statusText,
+        payload: lookupResult.payload,
+      };
+    }
+
+    const firstFolder =
+      Array.isArray(lookupResult.payload?.files) && lookupResult.payload.files.length > 0
+        ? lookupResult.payload.files[0]
+        : null;
+    if (firstFolder && typeof firstFolder.id === "string" && firstFolder.id.trim()) {
+      return {
+        ok: true,
+        created: false,
+        folderId: firstFolder.id.trim(),
+      };
+    }
+
+    const createResult = await requestDriveApi({
+      accessToken,
+      url: GOOGLE_DRIVE_FILES_API_URL,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: JUSTCALENDAR_DRIVE_FOLDER_NAME,
+        mimeType: GOOGLE_DRIVE_FOLDER_MIME_TYPE,
+      }),
+    });
+    if (!createResult.ok) {
+      return {
+        ok: false,
+        error: "folder_create_failed",
+        status: createResult.status,
+        statusText: createResult.statusText,
+        payload: createResult.payload,
+      };
+    }
+
+    const folderId =
+      createResult.payload && typeof createResult.payload.id === "string"
+        ? createResult.payload.id.trim()
+        : "";
+    if (!folderId) {
+      return {
+        ok: false,
+        error: "missing_folder_id_after_create",
+        status: 502,
+        payload: createResult.payload,
+      };
+    }
+
+    return {
+      ok: true,
+      created: true,
+      folderId,
+    };
+  };
+
+  const createMultipartBoundary = () => {
+    const randomChunk = new Uint8Array(12);
+    if (typeof crypto !== "undefined" && crypto && typeof crypto.getRandomValues === "function") {
+      crypto.getRandomValues(randomChunk);
+    } else {
+      for (let index = 0; index < randomChunk.length; index += 1) {
+        randomChunk[index] = Math.floor(Math.random() * 256);
+      }
+    }
+    const randomHex = Array.from(randomChunk, (entry) => entry.toString(16).padStart(2, "0")).join("");
+    return `justcalendar_boundary_${randomHex}`;
+  };
+
+  const createDriveJsonFileInFolderFromBrowser = async ({
+    accessToken,
+    folderId,
+    fileName,
+    payload,
+  } = {}) => {
+    if (!folderId || !fileName) {
+      return {
+        ok: false,
+        error: "missing_file_create_params",
+      };
+    }
+
+    const metadata = {
+      name: fileName,
+      parents: [folderId],
+      mimeType: GOOGLE_DRIVE_JSON_MIME_TYPE,
+    };
+    const fileContents = `${JSON.stringify(payload, null, 2)}\n`;
+    const boundary = createMultipartBoundary();
+    const multipartBody = [
+      `--${boundary}`,
+      "Content-Type: application/json; charset=UTF-8",
+      "",
+      JSON.stringify(metadata),
+      `--${boundary}`,
+      "Content-Type: application/json; charset=UTF-8",
+      "",
+      fileContents,
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
+
+    const createUrl = new URL(GOOGLE_DRIVE_UPLOAD_API_URL);
+    createUrl.searchParams.set("uploadType", "multipart");
+    createUrl.searchParams.set("fields", "id,name,mimeType");
+
+    const createResult = await requestDriveApi({
+      accessToken,
+      url: createUrl,
+      method: "POST",
+      headers: {
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body: multipartBody,
+    });
+    if (!createResult.ok) {
+      return {
+        ok: false,
+        error: "file_create_failed",
+        status: createResult.status,
+        statusText: createResult.statusText,
+        payload: createResult.payload,
+      };
+    }
+
+    const fileId =
+      createResult.payload && typeof createResult.payload.id === "string"
+        ? createResult.payload.id.trim()
+        : "";
+    if (!fileId) {
+      return {
+        ok: false,
+        error: "missing_file_id_after_create",
+        status: 502,
+        payload: createResult.payload,
+      };
+    }
+
+    return {
+      ok: true,
+      fileId,
+      created: true,
+    };
+  };
+
+  const updateDriveJsonFileByIdFromBrowser = async ({
+    accessToken,
+    fileId,
+    payload,
+  } = {}) => {
+    if (!fileId) {
+      return {
+        ok: false,
+        error: "missing_file_update_params",
+      };
+    }
+
+    const updateUrl = new URL(`${GOOGLE_DRIVE_UPLOAD_API_URL}/${encodeURIComponent(fileId)}`);
+    updateUrl.searchParams.set("uploadType", "media");
+    updateUrl.searchParams.set("fields", "id,name,mimeType");
+
+    const updateResult = await requestDriveApi({
+      accessToken,
+      url: updateUrl,
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json; charset=UTF-8",
+      },
+      body: `${JSON.stringify(payload, null, 2)}\n`,
+    });
+    if (!updateResult.ok) {
+      return {
+        ok: false,
+        error: "file_update_failed",
+        status: updateResult.status,
+        statusText: updateResult.statusText,
+        payload: updateResult.payload,
+      };
+    }
+
+    return {
+      ok: true,
+      fileId,
+      created: false,
+    };
+  };
+
+  const upsertDriveJsonFileInFolderFromBrowser = async ({
+    accessToken,
+    folderId,
+    fileName,
+    payload,
+  } = {}) => {
+    const lookupResult = await findDriveFileByNameInFolderFromBrowser({
+      accessToken,
+      folderId,
+      fileName,
+    });
+    if (!lookupResult.ok) {
+      return lookupResult;
+    }
+
+    if (lookupResult.found) {
+      return updateDriveJsonFileByIdFromBrowser({
+        accessToken,
+        fileId: lookupResult.fileId,
+        payload,
+      });
+    }
+
+    return createDriveJsonFileInFolderFromBrowser({
+      accessToken,
+      folderId,
+      fileName,
+      payload,
+    });
+  };
+
+  const readDriveJsonFileByIdFromBrowser = async ({ accessToken, fileId } = {}) => {
+    if (!fileId) {
+      return {
+        ok: false,
+        error: "missing_file_read_params",
+      };
+    }
+
+    const readUrl = new URL(`${GOOGLE_DRIVE_FILES_API_URL}/${encodeURIComponent(fileId)}`);
+    readUrl.searchParams.set("alt", "media");
+
+    const readResult = await requestDriveApi({
+      accessToken,
+      url: readUrl,
+    });
+    if (!readResult.ok) {
+      return {
+        ok: false,
+        error: "file_read_failed",
+        status: readResult.status,
+        statusText: readResult.statusText,
+        payload: readResult.payload,
+      };
+    }
+    if (!isObjectLike(readResult.payload)) {
+      return {
+        ok: false,
+        error: "file_read_invalid_payload",
+        status: 502,
+        payload: readResult.payload,
+      };
+    }
+
+    return {
+      ok: true,
+      payload: readResult.payload,
+    };
+  };
+
+  const buildDrivePersistedFilesFromBootstrap = (bootstrapPayload) => {
+    const payloadObject =
+      bootstrapPayload && typeof bootstrapPayload === "object" && !Array.isArray(bootstrapPayload)
+        ? bootstrapPayload
+        : {};
+    const accountName = normalizeBootstrapCalendarName(payloadObject.currentAccount, "default");
+    const accountId =
+      (typeof payloadObject.currentAccountId === "string" ? payloadObject.currentAccountId.trim() : "") ||
+      getOrCreateDriveAccountId();
+    const selectedTheme = normalizeThemeForDrive(payloadObject.selectedTheme) || DEFAULT_THEME;
+    const rawCalendars = Array.isArray(payloadObject.calendars) ? payloadObject.calendars : [];
+    const normalizedCalendars = rawCalendars
+      .map((rawCalendar, index) => {
+        if (!isObjectLike(rawCalendar)) {
+          return null;
+        }
+
+        const fallbackName = `Calendar ${index + 1}`;
+        const fallbackIdToken = `calendar_${index + 1}`;
+        const calendarId = toDriveEntityId(
+          "cal",
+          typeof rawCalendar.id === "string" ? rawCalendar.id.trim() : "",
+          fallbackIdToken,
+        );
+        if (!calendarId) {
+          return null;
+        }
+
+        const calendarType = normalizeBootstrapCalendarType(rawCalendar.type);
+        const calendarName = normalizeBootstrapCalendarName(rawCalendar.name, fallbackName);
+        const calendarColor = normalizeCalendarColor(rawCalendar.color, DEFAULT_CALENDAR_COLOR);
+        const calendarPinned = Boolean(rawCalendar.pinned);
+        const calendarDisplay =
+          calendarType === CALENDAR_TYPE_SCORE
+            ? normalizeScoreDisplay(rawCalendar.display)
+            : undefined;
+        const dayEntries = normalizeBootstrapCalendarDayEntries(rawCalendar.data);
+        const dataFile = `${accountId}_${calendarId}.json`;
+
+        return {
+          id: calendarId,
+          name: calendarName,
+          type: calendarType,
+          color: calendarColor,
+          pinned: calendarPinned,
+          ...(calendarDisplay ? { display: calendarDisplay } : {}),
+          dataFile,
+          data: dayEntries,
+        };
+      })
+      .filter(Boolean);
+
+    const currentCalendarIdRaw =
+      typeof payloadObject.currentCalendarId === "string" ? payloadObject.currentCalendarId.trim() : "";
+    const currentCalendarId = normalizedCalendars.some((calendar) => calendar.id === currentCalendarIdRaw)
+      ? currentCalendarIdRaw
+      : normalizedCalendars[0]?.id || "";
+
+    const configPayload = {
+      version: 1,
+      "current-account-id": accountId,
+      "current-calendar-id": currentCalendarId,
+      "selected-theme": selectedTheme,
+      accounts: {
+        [accountId]: {
+          id: accountId,
+          name: accountName,
+          calendars: normalizedCalendars.map((calendar) => ({
+            id: calendar.id,
+            name: calendar.name,
+            type: calendar.type,
+            color: calendar.color,
+            pinned: calendar.pinned,
+            ...(calendar.type === CALENDAR_TYPE_SCORE && calendar.display
+              ? { display: calendar.display }
+              : {}),
+            "data-file": calendar.dataFile,
+          })),
+        },
+      },
+    };
+
+    const calendarDataFiles = normalizedCalendars.map((calendar) => ({
+      calendarId: calendar.id,
+      fileName: calendar.dataFile,
+      payload: {
+        version: 1,
+        "account-id": accountId,
+        "calendar-id": calendar.id,
+        "calendar-name": calendar.name,
+        "calendar-type": calendar.type,
+        data: toNestedCalendarDayEntries(calendar.data),
+      },
+    }));
+
+    return {
+      accountId,
+      accountName,
+      currentCalendarId,
+      selectedTheme,
+      calendars: normalizedCalendars,
+      configPayload,
+      calendarDataFiles,
+    };
+  };
+
+  const ensureMissingDriveConfigFromBrowser = async () => {
+    const accessTokenResult = await requestGoogleAccessTokenFromBackend();
+    if (!accessTokenResult.ok) {
+      return {
+        ok: false,
+        phase: "access_token",
+        ...accessTokenResult,
+      };
+    }
+    const accessToken = accessTokenResult.accessToken;
+
+    const folderResult = await ensureDriveFolderFromBrowser(accessToken);
+    if (!folderResult.ok) {
+      return {
+        ok: false,
+        phase: "folder",
+        ...folderResult,
+      };
+    }
+    const folderId = folderResult.folderId || "";
+
+    const configLookupResult = await findDriveFileByNameInFolderFromBrowser({
+      accessToken,
+      folderId,
+      fileName: JUSTCALENDAR_CONFIG_FILE_NAME,
+    });
+    if (!configLookupResult.ok) {
+      return {
+        ok: false,
+        phase: "config_lookup",
+        ...configLookupResult,
+      };
+    }
+
+    if (configLookupResult.found) {
+      return {
+        ok: true,
+        handled: false,
+        reason: "config_exists",
+        folderId,
+        fileId: configLookupResult.fileId || "",
+      };
+    }
+
+    const bootstrapPayload = buildDriveBootstrapPayload();
+    const persistedBundle = buildDrivePersistedFilesFromBootstrap(bootstrapPayload);
+    const createConfigResult = await createDriveJsonFileInFolderFromBrowser({
+      accessToken,
+      folderId,
+      fileName: JUSTCALENDAR_CONFIG_FILE_NAME,
+      payload: persistedBundle.configPayload,
+    });
+    if (!createConfigResult.ok) {
+      return {
+        ok: false,
+        phase: "config_create",
+        ...createConfigResult,
+      };
+    }
+
+    const calendarFileResults = [];
+    for (const calendarDataFile of persistedBundle.calendarDataFiles) {
+      const upsertResult = await upsertDriveJsonFileInFolderFromBrowser({
+        accessToken,
+        folderId,
+        fileName: calendarDataFile.fileName,
+        payload: calendarDataFile.payload,
+      });
+      if (!upsertResult.ok) {
+        return {
+          ok: false,
+          phase: "calendar_data_upsert",
+          details: {
+            calendarId: calendarDataFile.calendarId,
+            fileName: calendarDataFile.fileName,
+            result: upsertResult,
+          },
+        };
+      }
+      calendarFileResults.push({
+        calendarId: calendarDataFile.calendarId,
+        fileName: calendarDataFile.fileName,
+        fileId: upsertResult.fileId || "",
+        created: Boolean(upsertResult.created),
+      });
+    }
+
+    return {
+      ok: true,
+      handled: true,
+      created: true,
+      configSource: "created",
+      folderId,
+      fileId: createConfigResult.fileId || "",
+      accountId: persistedBundle.accountId,
+      account: persistedBundle.accountName,
+      currentCalendarId: persistedBundle.currentCalendarId,
+      selectedTheme: persistedBundle.selectedTheme,
+      calendars: persistedBundle.calendars.map((calendar) => ({
+        id: calendar.id,
+        name: calendar.name,
+        type: calendar.type,
+        color: calendar.color,
+        pinned: calendar.pinned,
+        ...(calendar.type === CALENDAR_TYPE_SCORE && calendar.display
+          ? { display: calendar.display }
+          : {}),
+        "data-file": calendar.dataFile,
+      })),
+      dataFiles: calendarFileResults,
+      dataFilesCreated: calendarFileResults.filter((fileResult) => fileResult.created).length,
+    };
+  };
+
+  const saveAllDriveStateFromBrowser = async () => {
+    const accessTokenResult = await requestGoogleAccessTokenFromBackend();
+    if (!accessTokenResult.ok) {
+      return {
+        ok: false,
+        phase: "access_token",
+        ...accessTokenResult,
+      };
+    }
+    const accessToken = accessTokenResult.accessToken;
+
+    const folderResult = await ensureDriveFolderFromBrowser(accessToken);
+    if (!folderResult.ok) {
+      return {
+        ok: false,
+        phase: "folder",
+        ...folderResult,
+      };
+    }
+    const folderId = folderResult.folderId || "";
+
+    const configLookupResult = await findDriveFileByNameInFolderFromBrowser({
+      accessToken,
+      folderId,
+      fileName: JUSTCALENDAR_CONFIG_FILE_NAME,
+    });
+    if (!configLookupResult.ok) {
+      return {
+        ok: false,
+        phase: "config_lookup",
+        ...configLookupResult,
+      };
+    }
+
+    const existingConfigFileId = configLookupResult.found ? configLookupResult.fileId || "" : "";
+    let existingAccountId = "";
+    if (existingConfigFileId) {
+      const readConfigResult = await readDriveJsonFileByIdFromBrowser({
+        accessToken,
+        fileId: existingConfigFileId,
+      });
+      if (readConfigResult.ok) {
+        const rawAccountId =
+          typeof readConfigResult.payload["current-account-id"] === "string"
+            ? readConfigResult.payload["current-account-id"].trim()
+            : "";
+        if (isValidDriveAccountId(rawAccountId)) {
+          existingAccountId = rawAccountId;
+        }
+      }
+    }
+
+    const bootstrapPayload = buildDriveBootstrapPayload();
+    if (existingAccountId) {
+      bootstrapPayload.currentAccountId = existingAccountId;
+    }
+    const persistedBundle = buildDrivePersistedFilesFromBootstrap(bootstrapPayload);
+
+    const configWriteResult = existingConfigFileId
+      ? await updateDriveJsonFileByIdFromBrowser({
+          accessToken,
+          fileId: existingConfigFileId,
+          payload: persistedBundle.configPayload,
+        })
+      : await createDriveJsonFileInFolderFromBrowser({
+          accessToken,
+          folderId,
+          fileName: JUSTCALENDAR_CONFIG_FILE_NAME,
+          payload: persistedBundle.configPayload,
+        });
+    if (!configWriteResult.ok) {
+      return {
+        ok: false,
+        phase: "config_write",
+        ...configWriteResult,
+      };
+    }
+
+    const calendarFileResults = [];
+    for (const calendarDataFile of persistedBundle.calendarDataFiles) {
+      const upsertResult = await upsertDriveJsonFileInFolderFromBrowser({
+        accessToken,
+        folderId,
+        fileName: calendarDataFile.fileName,
+        payload: calendarDataFile.payload,
+      });
+      if (!upsertResult.ok) {
+        return {
+          ok: false,
+          phase: "calendar_data_upsert",
+          details: {
+            calendarId: calendarDataFile.calendarId,
+            fileName: calendarDataFile.fileName,
+            result: upsertResult,
+          },
+        };
+      }
+      calendarFileResults.push({
+        calendarId: calendarDataFile.calendarId,
+        fileName: calendarDataFile.fileName,
+        fileId: upsertResult.fileId || "",
+        created: Boolean(upsertResult.created),
+      });
+    }
+
+    return {
+      ok: true,
+      created: !existingConfigFileId,
+      configSource: existingConfigFileId ? "updated" : "created",
+      folderId,
+      fileId: existingConfigFileId || configWriteResult.fileId || "",
+      fileName: JUSTCALENDAR_CONFIG_FILE_NAME,
+      accountId: persistedBundle.accountId,
+      account: persistedBundle.accountName,
+      currentCalendarId: persistedBundle.currentCalendarId,
+      selectedTheme: persistedBundle.selectedTheme,
+      calendars: persistedBundle.calendars.map((calendar) => ({
+        id: calendar.id,
+        name: calendar.name,
+        type: calendar.type,
+        color: calendar.color,
+        pinned: calendar.pinned,
+        ...(calendar.type === CALENDAR_TYPE_SCORE && calendar.display
+          ? { display: calendar.display }
+          : {}),
+        "data-file": calendar.dataFile,
+      })),
+      dataFiles: calendarFileResults,
+      dataFilesSaved: calendarFileResults.length,
+      dataFilesCreated: calendarFileResults.filter((fileResult) => fileResult.created).length,
+    };
+  };
+
   const syncLocalStateFromDrive = (bootstrapPayload) => {
     const remoteState =
       bootstrapPayload && typeof bootstrapPayload === "object" ? bootstrapPayload.remoteState : null;
@@ -1644,6 +2412,73 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     return true;
   };
 
+  const ensureDriveBootstrapConfigViaBackend = async () => {
+    const response = await fetch("/api/auth/google/bootstrap-config", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(buildDriveBootstrapPayload()),
+    });
+    const payload = await readResponsePayload(response);
+    if (!response.ok || !payload?.ok) {
+      logGoogleAuthMessage(
+        "error",
+        "Failed to ensure justcalendar.json bootstrap config in Google Drive.",
+        {
+          status: response.status,
+          statusText: response.statusText,
+          payload,
+        },
+      );
+      return;
+    }
+
+    if (typeof payload?.fileId !== "string" || !payload.fileId.trim()) {
+      logGoogleAuthMessage(
+        "error",
+        "Drive bootstrap returned success but no config file id; will retry later.",
+        payload,
+      );
+      return;
+    }
+
+    syncStoredDriveAccountIdFromPayload(payload);
+
+    const shouldImportRemoteState =
+      payload?.configSource === "existing" && isObjectLike(payload?.remoteState);
+    if (shouldImportRemoteState) {
+      const importedFromDrive = syncLocalStateFromDrive(payload);
+      if (importedFromDrive) {
+        hasBootstrappedDriveConfig = true;
+        logGoogleAuthMessage(
+          "info",
+          "Loaded calendars and data from Google Drive and replaced local state.",
+        );
+        if (typeof onDriveStateImported === "function") {
+          onDriveStateImported(payload);
+        }
+        setExpanded(false);
+        return;
+      }
+    }
+
+    hasBootstrappedDriveConfig = true;
+    if (payload.created) {
+      logGoogleAuthMessage(
+        "info",
+        "Created first-time justcalendar.json config in Google Drive.",
+        payload,
+      );
+    } else {
+      logGoogleAuthMessage(
+        "info",
+        "justcalendar.json already exists in Google Drive.",
+        payload,
+      );
+    }
+  };
+
   const ensureDriveBootstrapConfig = async () => {
     if (!isGoogleDriveConfigured || !isGoogleDriveConnected || hasBootstrappedDriveConfig) {
       return;
@@ -1656,70 +2491,29 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     setDriveBusy(true);
     bootstrapDriveConfigPromise = (async () => {
       try {
-        const response = await fetch("/api/auth/google/bootstrap-config", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(buildDriveBootstrapPayload()),
-        });
-        const payload = await readResponsePayload(response);
-        if (!response.ok || !payload?.ok) {
+        const directBootstrapResult = await ensureMissingDriveConfigFromBrowser();
+        if (directBootstrapResult.ok && directBootstrapResult.handled) {
+          syncStoredDriveAccountIdFromPayload(directBootstrapResult);
+          hasBootstrappedDriveConfig = true;
           logGoogleAuthMessage(
-            "error",
-            "Failed to ensure justcalendar.json bootstrap config in Google Drive.",
-            {
-              status: response.status,
-              statusText: response.statusText,
-              payload,
-            },
+            "info",
+            "Created first-time justcalendar.json and calendar data files directly from browser.",
+            directBootstrapResult,
           );
           return;
         }
 
-        if (typeof payload?.fileId !== "string" || !payload.fileId.trim()) {
-          logGoogleAuthMessage(
-            "error",
-            "Drive bootstrap returned success but no config file id; will retry later.",
-            payload,
-          );
+        if (directBootstrapResult.ok && directBootstrapResult.reason === "config_exists") {
+          await ensureDriveBootstrapConfigViaBackend();
           return;
         }
 
-        syncStoredDriveAccountIdFromPayload(payload);
-
-        const shouldImportRemoteState =
-          payload?.configSource === "existing" && isObjectLike(payload?.remoteState);
-        if (shouldImportRemoteState) {
-          const importedFromDrive = syncLocalStateFromDrive(payload);
-          if (importedFromDrive) {
-            hasBootstrappedDriveConfig = true;
-            logGoogleAuthMessage(
-              "info",
-              "Loaded calendars and data from Google Drive and replaced local state.",
-            );
-            if (typeof onDriveStateImported === "function") {
-              onDriveStateImported(payload);
-            }
-            setExpanded(false);
-            return;
-          }
-        }
-
-        hasBootstrappedDriveConfig = true;
-        if (payload.created) {
-          logGoogleAuthMessage(
-            "info",
-            "Created first-time justcalendar.json config in Google Drive.",
-            payload,
-          );
-        } else {
-          logGoogleAuthMessage(
-            "info",
-            "justcalendar.json already exists in Google Drive.",
-            payload,
-          );
-        }
+        logGoogleAuthMessage(
+          "warn",
+          "Browser bootstrap for missing justcalendar.json failed; falling back to backend bootstrap.",
+          directBootstrapResult,
+        );
+        await ensureDriveBootstrapConfigViaBackend();
       } catch (error) {
         logGoogleAuthMessage("error", "Drive config bootstrap request failed.", {
           error: error instanceof Error ? error.message : String(error),
@@ -1980,26 +2774,19 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
         setDriveBusy(true);
 
         try {
-          const response = await fetch("/api/auth/google/save-state", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(buildDriveBootstrapPayload()),
-          });
-          const payload = await readResponsePayload(response);
-          if (!response.ok || !payload?.ok) {
-            logGoogleAuthMessage("error", "Save All failed while writing state to Google Drive.", {
-              status: response.status,
-              statusText: response.statusText,
-              payload,
-            });
+          const saveResult = await saveAllDriveStateFromBrowser();
+          if (!saveResult.ok) {
+            logGoogleAuthMessage(
+              "error",
+              "Save All failed while writing state to Google Drive from browser.",
+              saveResult,
+            );
           } else {
-            syncStoredDriveAccountIdFromPayload(payload);
+            syncStoredDriveAccountIdFromPayload(saveResult);
             logGoogleAuthMessage(
               "info",
-              "Saved full app state to Google Drive.",
-              payload,
+              "Saved full app state to Google Drive from browser.",
+              saveResult,
             );
           }
         } catch (error) {
