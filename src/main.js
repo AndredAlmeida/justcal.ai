@@ -1039,6 +1039,7 @@ function setupProfileSwitcher({ switcher, button, options }) {
   const driveBusyOverlay = document.getElementById("drive-busy-overlay");
   const GOOGLE_CONNECTED_COOKIE_NAME = "justcal_google_connected";
   const GOOGLE_AUTH_LOG_PREFIX = "[JustCalendar][GoogleDriveAuth]";
+  const DRIVE_BOOTSTRAP_SKIP_ONCE_KEY = "justcal_drive_bootstrap_skip_once";
   let isGoogleDriveConnected = false;
   let isGoogleDriveConfigured = true;
   let googleSub = "";
@@ -1054,6 +1055,28 @@ function setupProfileSwitcher({ switcher, button, options }) {
     }
     logger(`${GOOGLE_AUTH_LOG_PREFIX} ${message}`, details);
   };
+
+  const consumeBootstrapSkipOnce = () => {
+    try {
+      if (sessionStorage.getItem(DRIVE_BOOTSTRAP_SKIP_ONCE_KEY) === "1") {
+        sessionStorage.removeItem(DRIVE_BOOTSTRAP_SKIP_ONCE_KEY);
+        return true;
+      }
+    } catch {
+      // Ignore storage failures.
+    }
+    return false;
+  };
+
+  const markBootstrapSkipOnce = () => {
+    try {
+      sessionStorage.setItem(DRIVE_BOOTSTRAP_SKIP_ONCE_KEY, "1");
+    } catch {
+      // Ignore storage failures.
+    }
+  };
+
+  hasBootstrappedDriveConfig = consumeBootstrapSkipOnce();
 
   const setDriveBusy = (isBusy) => {
     if (!driveBusyOverlay) return;
@@ -1595,6 +1618,7 @@ function setupProfileSwitcher({ switcher, button, options }) {
           const importedFromDrive = syncLocalStateFromDrive(payload);
           if (importedFromDrive) {
             hasBootstrappedDriveConfig = true;
+            markBootstrapSkipOnce();
             logGoogleAuthMessage(
               "info",
               "Loaded calendars and data from Google Drive and replaced local state.",
