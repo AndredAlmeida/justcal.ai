@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
+import { createGoogleAuthPlugin } from './server/google-auth-plugin.js'
 
 const tlsKeyPath = new URL('./certs/justcal.ai.key', import.meta.url)
 const tlsCertPath = new URL('./certs/justcal.ai.crt', import.meta.url)
@@ -40,34 +41,49 @@ function createMalformedUriGuardPlugin() {
   }
 }
 
-export default defineConfig({
-  plugins: [createMalformedUriGuardPlugin()],
-  server: {
-    host: '0.0.0.0',
-    port: 443,
-    strictPort: true,
-    https: httpsConfig,
-    allowedHosts: [
-      'mbp',
-      'mbp.tail1592c.ts.net',
-      'justcal.ai',
-      'www.justcal.ai',
-      'justcalendar.ai',
-      'www.justcalendar.ai',
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+
+  return {
+    plugins: [
+      createMalformedUriGuardPlugin(),
+      createGoogleAuthPlugin({
+        clientId: env.GOOGLE_OAUTH_CLIENT_ID || '',
+        clientSecret: env.GOOGLE_OAUTH_CLIENT_SECRET || '',
+        apiKey: env.GOOGLE_OAUTH_API_KEY || '',
+        appId: env.GOOGLE_OAUTH_APP_ID || '',
+        projectNumber: env.GOOGLE_OAUTH_PROJECT_NUMBER || '',
+        redirectUri: env.GOOGLE_OAUTH_REDIRECT_URI || '',
+        postAuthRedirect: env.GOOGLE_OAUTH_POST_AUTH_REDIRECT || '/',
+      }),
     ],
-  },
-  preview: {
-    host: '0.0.0.0',
-    port: 443,
-    strictPort: true,
-    https: httpsConfig,
-    allowedHosts: [
-      'mbp',
-      'mbp.tail1592c.ts.net',
-      'justcal.ai',
-      'www.justcal.ai',
-      'justcalendar.ai',
-      'www.justcalendar.ai',
-    ],
-  },
+    server: {
+      host: '0.0.0.0',
+      port: 443,
+      strictPort: true,
+      https: httpsConfig,
+      allowedHosts: [
+        'mbp',
+        'mbp.tail1592c.ts.net',
+        'justcal.ai',
+        'www.justcal.ai',
+        'justcalendar.ai',
+        'www.justcalendar.ai',
+      ],
+    },
+    preview: {
+      host: '0.0.0.0',
+      port: 443,
+      strictPort: true,
+      https: httpsConfig,
+      allowedHosts: [
+        'mbp',
+        'mbp.tail1592c.ts.net',
+        'justcal.ai',
+        'www.justcal.ai',
+        'justcalendar.ai',
+        'www.justcalendar.ai',
+      ],
+    },
+  }
 })

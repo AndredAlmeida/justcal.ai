@@ -41,6 +41,35 @@ App scripts:
 - `npm run build` -> production build to `dist/`
 - `npm run preview` -> preview built app
 
+## Google Drive OAuth
+
+This app now supports server-side Google OAuth for Drive connect/login (no file picker UI in this step).
+Requested Google scopes: `openid` and `https://www.googleapis.com/auth/drive.file` (no `email` or `profile` scopes).
+
+Implemented API endpoints (same origin as the app):
+
+- `GET /api/auth/google/start`
+- `GET /api/auth/google/callback`
+- `GET /api/auth/google/status`
+- `POST /api/auth/google/access-token`
+- `POST /api/auth/google/disconnect`
+
+Environment setup:
+
+1. Copy `.env.example` to `.env.local`.
+2. Fill Google credentials in `.env.local`.
+3. Keep `.env.local` private (it is gitignored).
+
+Redirect URI alignment (must be exact):
+
+- If using the provided production domain: `https://justcalendar.ai/api/auth/google/callback`
+- If running elsewhere, set `GOOGLE_OAUTH_REDIRECT_URI` accordingly and add the exact same value to Google Cloud Console Authorized redirect URIs.
+
+Token persistence:
+
+- Refresh/access tokens are persisted server-side in `.data/google-auth-store.json` (gitignored).
+- Do not store refresh tokens in frontend storage.
+
 ## Browser Storage
 
 The app persists state in `localStorage` using:
@@ -67,6 +96,8 @@ The app persists state in `localStorage` using:
 │   ├── calendars.js
 │   ├── theme.js
 │   └── tweak-controls.js
+├── server/
+│   └── google-auth-plugin.js
 ├── vite.config.js
 └── package.json
 ```

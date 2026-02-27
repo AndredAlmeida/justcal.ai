@@ -1019,7 +1019,98 @@ function setupTelegramLogPanel({ toggleButton, panel, backdrop, closeButton }) {
 }
 
 function setupProfileSwitcher({ switcher, button, options }) {
-  const optionButtons = [...options.querySelectorAll("button[data-profile-action]")];
+  const optionButtons = [...options.querySelectorAll("[data-profile-action]")];
+  const googleDriveButton = options.querySelector('[data-profile-action="google-drive"]');
+  const googleDriveLabel = options.querySelector("#profile-google-drive-label");
+  let isGoogleDriveConnected = false;
+  let isGoogleDriveConfigured = true;
+  let googleSub = "";
+
+  const setGoogleDriveText = (nextLabel) => {
+    if (googleDriveLabel) {
+      googleDriveLabel.textContent = nextLabel;
+      return;
+    }
+    if (googleDriveButton) {
+      googleDriveButton.textContent = nextLabel;
+    }
+  };
+
+  const setGoogleDriveUiState = ({ connected = false, configured = true, openIdSubject = "" } = {}) => {
+    if (!googleDriveButton) return;
+
+    isGoogleDriveConnected = connected;
+    isGoogleDriveConfigured = configured;
+    googleSub = connected && typeof openIdSubject === "string" ? openIdSubject : "";
+    switcher.classList.toggle("is-drive-connected", connected);
+
+    if (!configured) {
+      setGoogleDriveText("Google Drive (Not Configured)");
+      googleDriveButton.title =
+        "Google OAuth env vars are missing on the server. Check .env.local.";
+      googleDriveButton.setAttribute("aria-label", "Google Drive not configured");
+      if (googleDriveButton instanceof HTMLButtonElement) {
+        googleDriveButton.disabled = true;
+      } else {
+        googleDriveButton.classList.add("is-disabled");
+        googleDriveButton.setAttribute("aria-disabled", "true");
+        googleDriveButton.removeAttribute("href");
+      }
+      return;
+    }
+
+    if (googleDriveButton instanceof HTMLButtonElement) {
+      googleDriveButton.disabled = false;
+    } else {
+      googleDriveButton.classList.remove("is-disabled");
+      googleDriveButton.removeAttribute("aria-disabled");
+    }
+
+    if (connected) {
+      const connectedLabel = "Logout from Google Drive";
+      setGoogleDriveText(connectedLabel);
+      googleDriveButton.title = connectedLabel;
+      googleDriveButton.setAttribute("aria-label", connectedLabel);
+      if (googleDriveButton instanceof HTMLAnchorElement) {
+        googleDriveButton.setAttribute("href", "#");
+      }
+      return;
+    }
+
+    setGoogleDriveText("Login to Google Drive");
+    googleDriveButton.title = "Login to Google Drive";
+    googleDriveButton.setAttribute("aria-label", "Login to Google Drive");
+    if (googleDriveButton instanceof HTMLAnchorElement) {
+      googleDriveButton.setAttribute("href", "/api/auth/google/start");
+    }
+  };
+
+  const refreshGoogleDriveStatus = async () => {
+    if (!googleDriveButton) return;
+    try {
+      const response = await fetch("/api/auth/google/status", {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error("status_request_failed");
+      }
+      const statusPayload = await response.json();
+      setGoogleDriveUiState({
+        connected: Boolean(statusPayload?.connected),
+        configured: Boolean(statusPayload?.configured ?? true),
+        openIdSubject:
+          typeof statusPayload?.openIdSubject === "string" ? statusPayload.openIdSubject : "",
+      });
+    } catch {
+      setGoogleDriveUiState({
+        connected: false,
+        configured: true,
+        openIdSubject: "",
+      });
+    }
+  };
+
   const setExpanded = (isExpanded, { focusButton = false } = {}) => {
     switcher.classList.toggle("is-expanded", isExpanded);
     button.setAttribute("aria-expanded", String(isExpanded));
@@ -1039,7 +1130,59 @@ function setupProfileSwitcher({ switcher, button, options }) {
   });
 
   optionButtons.forEach((optionButton) => {
-    optionButton.addEventListener("click", () => {
+    optionButton.addEventListener("click", async (event) => {
+      const actionType = optionButton.dataset.profileAction || "";
+      if (actionType === "google-drive") {
+        if (!isGoogleDriveConfigured) {
+          event.preventDefault();
+          setExpanded(false);
+          return;
+        }
+
+        if (!isGoogleDriveConnected) {
+          setExpanded(false);
+          if (optionButton instanceof HTMLButtonElement) {
+            window.location.assign("/api/auth/google/start");
+          }
+          // Anchor fallback keeps native navigation when JS logic does not run.
+          return;
+        }
+
+        event.preventDefault();
+        if (optionButton instanceof HTMLButtonElement) {
+          optionButton.disabled = true;
+        } else {
+          optionButton.classList.add("is-disabled");
+          optionButton.setAttribute("aria-disabled", "true");
+        }
+        try {
+          await fetch("/api/auth/google/disconnect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+        } finally {
+          if (optionButton instanceof HTMLButtonElement) {
+            optionButton.disabled = false;
+          } else {
+            optionButton.classList.remove("is-disabled");
+            optionButton.removeAttribute("aria-disabled");
+          }
+          await refreshGoogleDriveStatus();
+          setExpanded(false);
+        }
+        return;
+      }
+
+      if (actionType === "test-1") {
+        event.preventDefault();
+        await refreshGoogleDriveStatus();
+        console.log("google_sub", googleSub || null);
+        setExpanded(false);
+        return;
+      }
+
       setExpanded(false);
     });
   });
@@ -1065,6 +1208,8 @@ function setupProfileSwitcher({ switcher, button, options }) {
     event.preventDefault();
     setExpanded(false, { focusButton: true });
   });
+
+  refreshGoogleDriveStatus();
 }
 
 function setupTelegramLogFrameThemeSync(frame) {
