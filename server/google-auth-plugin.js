@@ -177,6 +177,220 @@ function normalizeBootstrapCalendarName(rawName, fallbackName) {
   return nextName || fallbackName;
 }
 
+function toCalendarNameLookupKey(rawName) {
+  return normalizeBootstrapCalendarName(rawName, "").toLowerCase();
+}
+
+function isObjectRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeBootstrapCheckValue(rawDayValue) {
+  if (rawDayValue === true || rawDayValue === false) {
+    return rawDayValue;
+  }
+  if (typeof rawDayValue === "number" && Number.isFinite(rawDayValue)) {
+    if (rawDayValue === 1) return true;
+    if (rawDayValue === 0) return false;
+    return null;
+  }
+  if (typeof rawDayValue !== "string") {
+    return null;
+  }
+  const normalizedCheckValue = rawDayValue.trim().toLowerCase();
+  if (
+    normalizedCheckValue === "1" ||
+    normalizedCheckValue === "true" ||
+    normalizedCheckValue === "checked" ||
+    normalizedCheckValue === "yes" ||
+    normalizedCheckValue === "on"
+  ) {
+    return true;
+  }
+  if (
+    normalizedCheckValue === "0" ||
+    normalizedCheckValue === "false" ||
+    normalizedCheckValue === "unchecked" ||
+    normalizedCheckValue === "no" ||
+    normalizedCheckValue === "off"
+  ) {
+    return false;
+  }
+  return null;
+}
+
+function normalizeBootstrapScoreValue(rawDayValue) {
+  const numericScoreValue = Number(rawDayValue);
+  if (!Number.isFinite(numericScoreValue)) {
+    return null;
+  }
+  const roundedScoreValue = Math.round(numericScoreValue);
+  if (roundedScoreValue < -1 || roundedScoreValue > 10) {
+    return null;
+  }
+  return roundedScoreValue;
+}
+
+function normalizeBootstrapSignalValue(rawDayValue) {
+  if (typeof rawDayValue !== "string") {
+    return null;
+  }
+  const normalizedSignalValue = rawDayValue.trim().toLowerCase();
+  if (
+    normalizedSignalValue === "red" ||
+    normalizedSignalValue === "yellow" ||
+    normalizedSignalValue === "green"
+  ) {
+    return normalizedSignalValue;
+  }
+  return null;
+}
+
+function normalizeBootstrapNoteValue(rawDayValue) {
+  if (typeof rawDayValue !== "string") {
+    return null;
+  }
+  const normalizedNoteValue = rawDayValue.trim();
+  return normalizedNoteValue || null;
+}
+
+function normalizeBootstrapCalendarDayValue(rawDayValue, calendarType) {
+  const normalizedCalendarType = normalizeBootstrapCalendarType(calendarType);
+  if (normalizedCalendarType === "check") {
+    const normalizedCheckValue = normalizeBootstrapCheckValue(rawDayValue);
+    if (normalizedCheckValue !== true) {
+      // Persist only checked days for compact check calendars.
+      return null;
+    }
+    return true;
+  }
+  if (normalizedCalendarType === "score") {
+    const normalizedScoreValue = normalizeBootstrapScoreValue(rawDayValue);
+    if (normalizedScoreValue === null || normalizedScoreValue === -1) {
+      // Skip unassigned score values for compact storage.
+      return null;
+    }
+    return normalizedScoreValue;
+  }
+  if (normalizedCalendarType === "notes") {
+    return normalizeBootstrapNoteValue(rawDayValue);
+  }
+  return normalizeBootstrapSignalValue(rawDayValue);
+}
+
+function normalizeDateParts(yearPart, monthPart, dayPart) {
+  const yearToken = String(yearPart ?? "").trim();
+  const monthToken = String(monthPart ?? "").trim();
+  const dayToken = String(dayPart ?? "").trim();
+
+  if (!/^\d{4}$/.test(yearToken)) {
+    return null;
+  }
+  if (!/^\d{1,2}$/.test(monthToken)) {
+    return null;
+  }
+  if (!/^\d{1,2}$/.test(dayToken)) {
+    return null;
+  }
+
+  const monthValue = Number(monthToken);
+  const dayValue = Number(dayToken);
+  if (!Number.isInteger(monthValue) || monthValue < 1 || monthValue > 12) {
+    return null;
+  }
+  if (!Number.isInteger(dayValue) || dayValue < 1 || dayValue > 31) {
+    return null;
+  }
+
+  const normalizedMonth = String(monthValue).padStart(2, "0");
+  const normalizedDay = String(dayValue).padStart(2, "0");
+  return {
+    year: yearToken,
+    month: normalizedMonth,
+    day: normalizedDay,
+    dayKey: `${yearToken}-${normalizedMonth}-${normalizedDay}`,
+  };
+}
+
+function normalizeBootstrapCalendarDayEntries(rawDayEntries, calendarType) {
+  if (!isObjectRecord(rawDayEntries)) {
+    return {};
+  }
+
+  const normalizedDayEntries = {};
+  const addNormalizedDayEntry = (yearPart, monthPart, dayPart, rawDayValue) => {
+    const normalizedDateParts = normalizeDateParts(yearPart, monthPart, dayPart);
+    if (!normalizedDateParts) {
+      return;
+    }
+    const normalizedDayValue = normalizeBootstrapCalendarDayValue(rawDayValue, calendarType);
+    if (normalizedDayValue === null) {
+      return;
+    }
+    normalizedDayEntries[normalizedDateParts.dayKey] = normalizedDayValue;
+  };
+
+  for (const [rawOuterKey, rawOuterValue] of Object.entries(rawDayEntries)) {
+    const outerKey = String(rawOuterKey ?? "").trim();
+    if (!outerKey) {
+      continue;
+    }
+
+    const flatKeyMatch = outerKey.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (flatKeyMatch) {
+      addNormalizedDayEntry(flatKeyMatch[1], flatKeyMatch[2], flatKeyMatch[3], rawOuterValue);
+      continue;
+    }
+
+    if (!/^\d{4}$/.test(outerKey) || !isObjectRecord(rawOuterValue)) {
+      continue;
+    }
+
+    for (const [rawMonthKey, rawMonthValue] of Object.entries(rawOuterValue)) {
+      const monthKey = String(rawMonthKey ?? "").trim();
+      if (!monthKey || !isObjectRecord(rawMonthValue)) {
+        continue;
+      }
+
+      for (const [rawDayKey, rawDayValue] of Object.entries(rawMonthValue)) {
+        const dayKey = String(rawDayKey ?? "").trim();
+        if (!dayKey) {
+          continue;
+        }
+        addNormalizedDayEntry(outerKey, monthKey, dayKey, rawDayValue);
+      }
+    }
+  }
+
+  return normalizedDayEntries;
+}
+
+function toNestedCalendarDayEntries(flatDayEntries) {
+  if (!isObjectRecord(flatDayEntries)) {
+    return {};
+  }
+
+  const nestedDayEntries = {};
+  const sortedDayEntries = Object.entries(flatDayEntries).sort(([leftDayKey], [rightDayKey]) =>
+    leftDayKey.localeCompare(rightDayKey),
+  );
+  for (const [dayKey, dayValue] of sortedDayEntries) {
+    const dayKeyMatch = dayKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!dayKeyMatch) {
+      continue;
+    }
+    const [, yearKey, monthKey, dayToken] = dayKeyMatch;
+    if (!nestedDayEntries[yearKey]) {
+      nestedDayEntries[yearKey] = {};
+    }
+    if (!nestedDayEntries[yearKey][monthKey]) {
+      nestedDayEntries[yearKey][monthKey] = {};
+    }
+    nestedDayEntries[yearKey][monthKey][dayToken] = dayValue;
+  }
+  return nestedDayEntries;
+}
+
 const ENTITY_ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const ENTITY_ID_CHARSET_SIZE = ENTITY_ID_ALPHABET.length;
 const ENTITY_ID_RANDOM_TOKEN_LENGTH = 17;
@@ -234,10 +448,12 @@ function normalizeBootstrapCalendars(rawCalendars) {
       }
 
       const fallbackName = `Calendar ${index + 1}`;
+      const calendarType = normalizeBootstrapCalendarType(rawCalendar.type);
       return {
         id: normalizeIncomingEntityId(rawCalendar.id, "cal"),
         name: normalizeBootstrapCalendarName(rawCalendar.name, fallbackName),
-        type: normalizeBootstrapCalendarType(rawCalendar.type),
+        type: calendarType,
+        data: normalizeBootstrapCalendarDayEntries(rawCalendar.data, calendarType),
       };
     })
     .filter(Boolean);
@@ -246,10 +462,13 @@ function normalizeBootstrapCalendars(rawCalendars) {
     return normalizedCalendars;
   }
 
-  return DEFAULT_BOOTSTRAP_CALENDARS.map((calendar) => ({ ...calendar }));
+  return DEFAULT_BOOTSTRAP_CALENDARS.map((calendar) => ({
+    ...calendar,
+    data: {},
+  }));
 }
 
-function buildJustCalendarConfigPayload(rawPayload = {}) {
+function buildJustCalendarBootstrapBundle(rawPayload = {}) {
   const payloadObject =
     rawPayload && typeof rawPayload === "object" && !Array.isArray(rawPayload) ? rawPayload : {};
   const requestedCurrentAccountName =
@@ -267,26 +486,44 @@ function buildJustCalendarConfigPayload(rawPayload = {}) {
         ? requestedCalendarId
         : generateEntityId("cal", usedCalendarIds);
     usedCalendarIds.add(calendarId);
+    const dataFile = `${currentAccountId}_${calendarId}.json`;
 
     return {
       id: calendarId,
       name: calendar.name,
       type: calendar.type,
-      "data-file": `${currentAccountId}_${calendarId}.json`,
+      dataFile,
+      data: normalizeBootstrapCalendarDayEntries(calendar.data, calendar.type),
     };
   });
 
+  const configCalendars = accountCalendars.map((calendar) => ({
+    id: calendar.id,
+    name: calendar.name,
+    type: calendar.type,
+    "data-file": calendar.dataFile,
+  }));
+
   return {
-    version: 1,
-    "current-account-id": currentAccountId,
-    accounts: {
-      [currentAccountId]: {
-        id: currentAccountId,
-        name: currentAccountName,
-        calendars: accountCalendars,
+    accountId: currentAccountId,
+    accountName: currentAccountName,
+    calendars: accountCalendars,
+    configPayload: {
+      version: 1,
+      "current-account-id": currentAccountId,
+      accounts: {
+        [currentAccountId]: {
+          id: currentAccountId,
+          name: currentAccountName,
+          calendars: configCalendars,
+        },
       },
     },
   };
+}
+
+function buildJustCalendarConfigPayload(rawPayload = {}) {
+  return buildJustCalendarBootstrapBundle(rawPayload).configPayload;
 }
 
 function parseScopeSet(scopeValue) {
@@ -775,7 +1012,12 @@ async function createDriveJsonFileInFolder({ accessToken, folderId, fileName, pa
   };
 }
 
-async function ensureJustCalendarConfigFile({ accessToken, folderId, configPayload }) {
+async function ensureJustCalendarConfigFile({
+  accessToken,
+  folderId,
+  configPayload,
+  allowCreateIfMissing = true,
+}) {
   const existingFileResult = await findDriveFileByNameInFolder({
     accessToken,
     folderId,
@@ -789,6 +1031,14 @@ async function ensureJustCalendarConfigFile({ accessToken, folderId, configPaylo
       ok: true,
       created: false,
       fileId: existingFileResult.fileId,
+    };
+  }
+  if (!allowCreateIfMissing) {
+    return {
+      ok: true,
+      created: false,
+      fileId: "",
+      missing: true,
     };
   }
 
@@ -809,10 +1059,263 @@ async function ensureJustCalendarConfigFile({ accessToken, folderId, configPaylo
   };
 }
 
+async function readDriveJsonFileById({ accessToken, fileId }) {
+  if (!accessToken || !fileId) {
+    return {
+      ok: false,
+      error: "missing_drive_file_read_params",
+    };
+  }
+
+  const readUrl = new URL(`${GOOGLE_DRIVE_FILES_URL}/${encodeURIComponent(fileId)}`);
+  readUrl.searchParams.set("alt", "media");
+
+  const readResponse = await fetch(readUrl, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: AbortSignal.timeout(8_000),
+  });
+  const readPayload = await readResponse.json().catch(() => null);
+
+  if (!readResponse.ok) {
+    return {
+      ok: false,
+      error: "config_read_failed",
+      status: readResponse.status,
+      details:
+        (readPayload && typeof readPayload === "object" ? readPayload.error : null) || "unknown_error",
+    };
+  }
+
+  if (!isObjectRecord(readPayload)) {
+    return {
+      ok: false,
+      error: "config_invalid_json",
+      status: 502,
+    };
+  }
+
+  return {
+    ok: true,
+    payload: readPayload,
+  };
+}
+
+function extractBootstrapBundleFromPersistedConfig(rawConfigPayload) {
+  if (!isObjectRecord(rawConfigPayload)) {
+    return null;
+  }
+
+  const rawAccounts = isObjectRecord(rawConfigPayload.accounts) ? rawConfigPayload.accounts : {};
+  let currentAccountId = normalizeIncomingEntityId(rawConfigPayload["current-account-id"], "acc");
+  let currentAccountRecord =
+    currentAccountId && isObjectRecord(rawAccounts[currentAccountId])
+      ? rawAccounts[currentAccountId]
+      : null;
+
+  if (!currentAccountRecord) {
+    for (const [rawAccountId, rawAccountRecord] of Object.entries(rawAccounts)) {
+      const normalizedAccountId = normalizeIncomingEntityId(rawAccountId, "acc");
+      if (!normalizedAccountId || !isObjectRecord(rawAccountRecord)) {
+        continue;
+      }
+      currentAccountId = normalizedAccountId;
+      currentAccountRecord = rawAccountRecord;
+      break;
+    }
+  }
+
+  if (!currentAccountId || !currentAccountRecord) {
+    return null;
+  }
+
+  const accountName = normalizeBootstrapCalendarName(
+    currentAccountRecord.name,
+    DEFAULT_BOOTSTRAP_ACCOUNT_NAME,
+  );
+  const rawCalendars = Array.isArray(currentAccountRecord.calendars)
+    ? currentAccountRecord.calendars
+    : [];
+  const usedCalendarIds = new Set();
+  const calendars = rawCalendars
+    .map((rawCalendar, index) => {
+      if (!isObjectRecord(rawCalendar)) {
+        return null;
+      }
+
+      const calendarId = normalizeIncomingEntityId(rawCalendar.id, "cal");
+      if (!calendarId || usedCalendarIds.has(calendarId)) {
+        return null;
+      }
+      usedCalendarIds.add(calendarId);
+
+      const calendarName = normalizeBootstrapCalendarName(rawCalendar.name, `Calendar ${index + 1}`);
+      const calendarType = normalizeBootstrapCalendarType(rawCalendar.type);
+      const rawDataFile = typeof rawCalendar["data-file"] === "string" ? rawCalendar["data-file"].trim() : "";
+      const dataFile = rawDataFile || `${currentAccountId}_${calendarId}.json`;
+
+      return {
+        id: calendarId,
+        name: calendarName,
+        type: calendarType,
+        dataFile,
+        data: {},
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    accountId: currentAccountId,
+    accountName,
+    calendars,
+    configPayload: rawConfigPayload,
+  };
+}
+
+function buildCalendarDataLookupMap(calendars = []) {
+  const calendarDataByName = new Map();
+  if (!Array.isArray(calendars)) {
+    return calendarDataByName;
+  }
+
+  for (const calendar of calendars) {
+    if (!isObjectRecord(calendar)) {
+      continue;
+    }
+    const nameKey = toCalendarNameLookupKey(calendar.name);
+    if (!nameKey) {
+      continue;
+    }
+    calendarDataByName.set(
+      nameKey,
+      normalizeBootstrapCalendarDayEntries(calendar.data, calendar.type),
+    );
+  }
+
+  return calendarDataByName;
+}
+
+function buildCalendarDataFilePayload({ accountId, calendar, dayEntries }) {
+  const normalizedDayEntries = normalizeBootstrapCalendarDayEntries(dayEntries, calendar?.type);
+  return {
+    version: 1,
+    "account-id": accountId,
+    "calendar-id": calendar.id,
+    "calendar-name": calendar.name,
+    "calendar-type": calendar.type,
+    data: toNestedCalendarDayEntries(normalizedDayEntries),
+  };
+}
+
+async function ensureJustCalendarDataFiles({
+  accessToken,
+  folderId,
+  accountId,
+  calendars = [],
+  requestedCalendars = [],
+}) {
+  if (!accessToken || !folderId || !accountId) {
+    return {
+      ok: false,
+      error: "missing_calendar_data_bootstrap_params",
+    };
+  }
+
+  const targetCalendars = Array.isArray(calendars) ? calendars : [];
+  if (targetCalendars.length === 0) {
+    return {
+      ok: true,
+      createdCount: 0,
+      files: [],
+    };
+  }
+
+  const requestedCalendarDataByName = buildCalendarDataLookupMap(requestedCalendars);
+  const fileResults = [];
+
+  for (const calendar of targetCalendars) {
+    if (!isObjectRecord(calendar)) {
+      continue;
+    }
+
+    const fileName = typeof calendar.dataFile === "string" ? calendar.dataFile.trim() : "";
+    if (!fileName) {
+      continue;
+    }
+
+    const existingDataFileResult = await findDriveFileByNameInFolder({
+      accessToken,
+      folderId,
+      fileName,
+    });
+    if (!existingDataFileResult.ok) {
+      return {
+        ok: false,
+        error: "calendar_data_lookup_failed",
+        status: existingDataFileResult.status || 502,
+        details: {
+          fileName,
+          cause: existingDataFileResult.details || existingDataFileResult.error || "unknown_error",
+        },
+      };
+    }
+
+    if (existingDataFileResult.found) {
+      fileResults.push({
+        fileName,
+        fileId: existingDataFileResult.fileId || "",
+        created: false,
+      });
+      continue;
+    }
+
+    const calendarNameKey = toCalendarNameLookupKey(calendar.name);
+    const calendarDayEntries = requestedCalendarDataByName.get(calendarNameKey) || {};
+    const createDataFileResult = await createDriveJsonFileInFolder({
+      accessToken,
+      folderId,
+      fileName,
+      payload: buildCalendarDataFilePayload({
+        accountId,
+        calendar,
+        dayEntries: calendarDayEntries,
+      }),
+    });
+    if (!createDataFileResult.ok) {
+      return {
+        ok: false,
+        error: "calendar_data_create_failed",
+        status: createDataFileResult.status || 502,
+        details: {
+          fileName,
+          cause: createDataFileResult.details || createDataFileResult.error || "unknown_error",
+        },
+      };
+    }
+
+    fileResults.push({
+      fileName,
+      fileId: createDataFileResult.fileId || "",
+      created: true,
+    });
+  }
+
+  return {
+    ok: true,
+    createdCount: fileResults.filter((fileResult) => fileResult.created).length,
+    files: fileResults,
+  };
+}
+
 async function ensureJustCalendarConfigForCurrentConnection({
   accessToken = "",
   config,
   configPayload = {},
+  bootstrapBundle = null,
+  allowCreateIfMissing = true,
+  ensureDataFiles = true,
 } = {}) {
   let storedState = readStoredAuthState();
   if (!hasGoogleScope(storedState.scope, GOOGLE_DRIVE_FILE_SCOPE)) {
@@ -889,10 +1392,19 @@ async function ensureJustCalendarConfigForCurrentConnection({
       };
     }
 
+    const requestedBootstrapBundle =
+      bootstrapBundle &&
+      typeof bootstrapBundle === "object" &&
+      !Array.isArray(bootstrapBundle) &&
+      isObjectRecord(bootstrapBundle.configPayload)
+        ? bootstrapBundle
+        : buildJustCalendarBootstrapBundle(configPayload);
+
     const configFileResult = await ensureJustCalendarConfigFile({
       accessToken: tokenToUse,
       folderId,
-      configPayload: buildJustCalendarConfigPayload(configPayload),
+      configPayload: requestedBootstrapBundle.configPayload,
+      allowCreateIfMissing,
     });
     if (!configFileResult.ok) {
       return configFileResult;
@@ -900,6 +1412,44 @@ async function ensureJustCalendarConfigForCurrentConnection({
 
     const configFileId =
       configFileResult && typeof configFileResult.fileId === "string" ? configFileResult.fileId : "";
+
+    let effectiveBootstrapBundle = null;
+    if (configFileResult.created) {
+      effectiveBootstrapBundle = requestedBootstrapBundle;
+    } else if (configFileId) {
+      const readConfigResult = await readDriveJsonFileById({
+        accessToken: tokenToUse,
+        fileId: configFileId,
+      });
+      if (!readConfigResult.ok) {
+        return readConfigResult;
+      }
+
+      effectiveBootstrapBundle = extractBootstrapBundleFromPersistedConfig(readConfigResult.payload);
+      if (!effectiveBootstrapBundle) {
+        // Compatibility fallback: keep legacy/invalid config files from blocking
+        // data-file bootstrap. Frontend bootstrap payload provides stable IDs.
+        effectiveBootstrapBundle = requestedBootstrapBundle;
+      }
+    }
+
+    const dataFilesResult = ensureDataFiles && effectiveBootstrapBundle
+      ? await ensureJustCalendarDataFiles({
+          accessToken: tokenToUse,
+          folderId,
+          accountId: effectiveBootstrapBundle.accountId,
+          calendars: effectiveBootstrapBundle.calendars,
+          requestedCalendars: requestedBootstrapBundle.calendars,
+        })
+      : {
+          ok: true,
+          createdCount: 0,
+          files: [],
+        };
+    if (!dataFilesResult.ok) {
+      return dataFilesResult;
+    }
+
     if (configFileId && configFileId !== freshState.configFileId) {
       writeStoredAuthState({
         ...freshState,
@@ -909,11 +1459,26 @@ async function ensureJustCalendarConfigForCurrentConnection({
       });
     }
 
+    const responseBundle = effectiveBootstrapBundle || requestedBootstrapBundle;
+    const responseCalendars = Array.isArray(responseBundle?.calendars)
+      ? responseBundle.calendars.map((calendar) => ({
+          id: calendar.id,
+          name: calendar.name,
+          type: calendar.type,
+          "data-file": calendar.dataFile,
+        }))
+      : [];
+
     return {
       ok: true,
       created: Boolean(configFileResult.created),
       fileId: configFileId,
       folderId,
+      accountId: responseBundle?.accountId || "",
+      account: responseBundle?.accountName || DEFAULT_BOOTSTRAP_ACCOUNT_NAME,
+      calendars: responseCalendars,
+      dataFilesCreated: Number(dataFilesResult.createdCount) || 0,
+      dataFiles: Array.isArray(dataFilesResult.files) ? dataFilesResult.files : [],
     };
   })();
 
@@ -1436,20 +2001,8 @@ function createGoogleAuthPlugin(config) {
       updatedAt: new Date().toISOString(),
     });
 
-    // Keep login-state update independent from Drive bootstrap checks.
-    void ensureJustCalendarConfigForCurrentConnection({
-      accessToken,
-      config: googleConfig,
-      configPayload: {},
-    })
-      .then((configResult) => {
-        if (!configResult.ok) {
-          console.warn("Google Drive config bootstrap failed during login callback.", configResult);
-        }
-      })
-      .catch((error) => {
-        console.warn("Google Drive config bootstrap failed during login callback.", error);
-      });
+    // Intentionally skip config bootstrap in callback.
+    // Frontend bootstrap endpoint call provides full local calendar payload.
 
     const redirectTarget =
       typeof googleConfig.postAuthRedirect === "string" && googleConfig.postAuthRedirect.trim()
@@ -1610,24 +2163,12 @@ function createGoogleAuthPlugin(config) {
       return;
     }
 
-    const configPayload = buildJustCalendarConfigPayload(bootstrapRequestPayload);
-    const currentAccountId =
-      typeof configPayload["current-account-id"] === "string"
-        ? configPayload["current-account-id"]
-        : "";
-    const accountConfig = currentAccountId ? configPayload?.accounts?.[currentAccountId] : null;
-    const accountName =
-      accountConfig && typeof accountConfig.name === "string"
-        ? accountConfig.name
-        : DEFAULT_BOOTSTRAP_ACCOUNT_NAME;
-    const accountCalendars = Array.isArray(accountConfig?.calendars)
-      ? accountConfig.calendars
-      : [];
+    const bootstrapBundle = buildJustCalendarBootstrapBundle(bootstrapRequestPayload);
 
     const ensureConfigResult = await ensureJustCalendarConfigForCurrentConnection({
       accessToken: stateWithToken.accessToken,
       config: googleConfig,
-      configPayload: bootstrapRequestPayload,
+      bootstrapBundle,
     });
     if (!ensureConfigResult.ok) {
       jsonResponse(res, Number(ensureConfigResult.status) || 502, {
@@ -1644,9 +2185,18 @@ function createGoogleAuthPlugin(config) {
       folderId: ensureConfigResult.folderId || "",
       fileId: ensureConfigResult.fileId || "",
       fileName: JUSTCALENDAR_CONFIG_FILE_NAME,
-      accountId: currentAccountId || "",
-      account: accountName,
-      calendars: accountCalendars,
+      accountId: ensureConfigResult.accountId || bootstrapBundle.accountId || "",
+      account: ensureConfigResult.account || bootstrapBundle.accountName || DEFAULT_BOOTSTRAP_ACCOUNT_NAME,
+      calendars: Array.isArray(ensureConfigResult.calendars)
+        ? ensureConfigResult.calendars
+        : bootstrapBundle.calendars.map((calendar) => ({
+            id: calendar.id,
+            name: calendar.name,
+            type: calendar.type,
+            "data-file": calendar.dataFile,
+          })),
+      dataFilesCreated: Number(ensureConfigResult.dataFilesCreated) || 0,
+      dataFiles: Array.isArray(ensureConfigResult.dataFiles) ? ensureConfigResult.dataFiles : [],
     });
   };
 

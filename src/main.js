@@ -28,6 +28,7 @@ const VIEW_MODE_MONTH = "month";
 const VIEW_MODE_YEAR = "year";
 const MOBILE_LAYOUT_QUERY = "(max-width: 640px)";
 const YEAR_VIEW_YEAR = new Date().getFullYear();
+const CALENDARS_STORAGE_KEY = "justcal-calendars";
 const CALENDAR_DAY_STATES_STORAGE_KEY = "justcal-calendar-day-states";
 const LEGACY_DAY_STATE_STORAGE_KEY = "justcal-day-states";
 const DEFAULT_CALENDAR_ID = "energy-tracker";
@@ -1022,11 +1023,14 @@ function setupProfileSwitcher({ switcher, button, options }) {
   const optionButtons = [...options.querySelectorAll("[data-profile-action]")];
   const googleDriveButton = options.querySelector('[data-profile-action="google-drive"]');
   const googleDriveLabel = options.querySelector("#profile-google-drive-label");
+  const optionsDivider = options.querySelector(".calendar-options-divider");
   const GOOGLE_CONNECTED_COOKIE_NAME = "justcal_google_connected";
   const GOOGLE_AUTH_LOG_PREFIX = "[JustCalendar][GoogleDriveAuth]";
   let isGoogleDriveConnected = false;
   let isGoogleDriveConfigured = true;
   let googleSub = "";
+  let hasBootstrappedDriveConfig = false;
+  let bootstrapDriveConfigPromise = null;
 
   const logGoogleAuthMessage = (level, message, details) => {
     const logger = typeof console[level] === "function" ? console[level] : console.log;
@@ -1082,6 +1086,280 @@ function setupProfileSwitcher({ switcher, button, options }) {
     }
   };
 
+  const reorderGoogleDriveOption = (connected) => {
+    if (!googleDriveButton || googleDriveButton.parentElement !== options) return;
+
+    if (connected) {
+      if (options.lastElementChild !== googleDriveButton) {
+        options.appendChild(googleDriveButton);
+      }
+      return;
+    }
+
+    if (optionsDivider && optionsDivider.parentElement === options) {
+      if (optionsDivider.nextElementSibling !== googleDriveButton) {
+        optionsDivider.insertAdjacentElement("afterend", googleDriveButton);
+      }
+      return;
+    }
+
+    if (options.firstElementChild !== googleDriveButton) {
+      options.insertBefore(googleDriveButton, options.firstElementChild);
+    }
+  };
+
+  const normalizeBootstrapCalendarName = (rawName, fallbackName) => {
+    const normalizedName = String(rawName ?? "").replace(/\s+/g, " ").trim();
+    return normalizedName || fallbackName;
+  };
+
+  const normalizeBootstrapCalendarType = (rawType) => {
+    if (typeof rawType !== "string") {
+      return CALENDAR_TYPE_SIGNAL;
+    }
+    const normalizedType = rawType.trim().toLowerCase();
+    if (
+      normalizedType === CALENDAR_TYPE_SIGNAL ||
+      normalizedType === CALENDAR_TYPE_SCORE ||
+      normalizedType === CALENDAR_TYPE_CHECK ||
+      normalizedType === CALENDAR_TYPE_NOTES
+    ) {
+      return normalizedType;
+    }
+    return CALENDAR_TYPE_SIGNAL;
+  };
+
+  const toDriveEntityId = (prefix, rawValue, fallbackToken) => {
+    const normalizedToken = String(rawValue ?? fallbackToken ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 63);
+    if (!normalizedToken) {
+      return "";
+    }
+    return `${prefix}_${normalizedToken}`;
+  };
+
+  const normalizeBootstrapCalendarDayEntries = (rawDayEntries) => {
+    if (!isObjectLike(rawDayEntries)) {
+      return {};
+    }
+
+    const normalizedDayEntries = {};
+    Object.entries(rawDayEntries).forEach(([rawDayKey, rawDayValue]) => {
+      const dayKey = String(rawDayKey ?? "").trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) {
+        return;
+      }
+      if (typeof rawDayValue === "string") {
+        normalizedDayEntries[dayKey] = rawDayValue;
+        return;
+      }
+      if (typeof rawDayValue === "boolean") {
+        normalizedDayEntries[dayKey] = rawDayValue;
+        return;
+      }
+      if (typeof rawDayValue === "number" && Number.isFinite(rawDayValue)) {
+        normalizedDayEntries[dayKey] = rawDayValue;
+      }
+    });
+
+    return normalizedDayEntries;
+  };
+
+  const readBootstrapCalendarDayStates = () => {
+    try {
+      const rawStoredDayStates = localStorage.getItem(CALENDAR_DAY_STATES_STORAGE_KEY);
+      if (rawStoredDayStates !== null) {
+        const parsedStoredDayStates = JSON.parse(rawStoredDayStates);
+        if (isObjectLike(parsedStoredDayStates)) {
+          return parsedStoredDayStates;
+        }
+      }
+    } catch {
+      // Ignore and try legacy fallback.
+    }
+
+    try {
+      const rawLegacyDayStates = localStorage.getItem(LEGACY_DAY_STATE_STORAGE_KEY);
+      if (rawLegacyDayStates === null) {
+        return {};
+      }
+      const parsedLegacyDayStates = JSON.parse(rawLegacyDayStates);
+      if (!isObjectLike(parsedLegacyDayStates)) {
+        return {};
+      }
+      return {
+        [DEFAULT_CALENDAR_ID]: parsedLegacyDayStates,
+      };
+    } catch {
+      return {};
+    }
+  };
+
+  const buildDriveBootstrapPayload = () => {
+    const fallbackCalendars = [
+      {
+        id: "cal_sleep_score",
+        name: "Sleep Score",
+        type: CALENDAR_TYPE_SCORE,
+        data: {},
+      },
+      {
+        id: "cal_took_pills",
+        name: "Took Pills",
+        type: CALENDAR_TYPE_CHECK,
+        data: {},
+      },
+      {
+        id: "cal_energy_tracker",
+        name: "Energy Tracker",
+        type: CALENDAR_TYPE_SIGNAL,
+        data: {},
+      },
+      {
+        id: "cal_todos",
+        name: "TODOs",
+        type: CALENDAR_TYPE_NOTES,
+        data: {},
+      },
+      {
+        id: "cal_workout_intensity",
+        name: "Workout Intensity",
+        type: CALENDAR_TYPE_SCORE,
+        data: {},
+      },
+    ];
+
+    try {
+      const rawStoredCalendarsState = localStorage.getItem(CALENDARS_STORAGE_KEY);
+      const storedDayStatesByCalendarId = readBootstrapCalendarDayStates();
+      if (!rawStoredCalendarsState) {
+        return {
+          currentAccount: "default",
+          currentAccountId: "acc_default",
+          calendars: fallbackCalendars,
+        };
+      }
+
+      const parsedStoredCalendarsState = JSON.parse(rawStoredCalendarsState);
+      const storedCalendars = Array.isArray(parsedStoredCalendarsState?.calendars)
+        ? parsedStoredCalendarsState.calendars
+        : [];
+      const normalizedCalendars = storedCalendars
+        .map((calendar, index) => {
+          if (!calendar || typeof calendar !== "object" || Array.isArray(calendar)) {
+            return null;
+          }
+
+          const fallbackName = `Calendar ${index + 1}`;
+          const localCalendarId =
+            typeof calendar.id === "string" && calendar.id.trim() ? calendar.id.trim() : "";
+          const dayEntries = localCalendarId ? storedDayStatesByCalendarId[localCalendarId] : {};
+          const driveCalendarId = toDriveEntityId(
+            "cal",
+            localCalendarId,
+            `calendar_${index + 1}`,
+          );
+          const normalizedCalendar = {
+            name: normalizeBootstrapCalendarName(calendar.name, fallbackName),
+            type: normalizeBootstrapCalendarType(calendar.type),
+            data: normalizeBootstrapCalendarDayEntries(dayEntries),
+          };
+          if (driveCalendarId) {
+            normalizedCalendar.id = driveCalendarId;
+          }
+          return {
+            ...normalizedCalendar,
+          };
+        })
+        .filter(Boolean);
+
+      return {
+        currentAccount: "default",
+        currentAccountId: "acc_default",
+        calendars: normalizedCalendars.length > 0 ? normalizedCalendars : fallbackCalendars,
+      };
+    } catch {
+      return {
+        currentAccount: "default",
+        currentAccountId: "acc_default",
+        calendars: fallbackCalendars,
+      };
+    }
+  };
+
+  const ensureDriveBootstrapConfig = async () => {
+    if (!isGoogleDriveConfigured || !isGoogleDriveConnected || hasBootstrappedDriveConfig) {
+      return;
+    }
+    if (bootstrapDriveConfigPromise) {
+      await bootstrapDriveConfigPromise;
+      return;
+    }
+
+    bootstrapDriveConfigPromise = (async () => {
+      try {
+        const response = await fetch("/api/auth/google/bootstrap-config", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(buildDriveBootstrapPayload()),
+        });
+        const payload = await readResponsePayload(response);
+        if (!response.ok || !payload?.ok) {
+          logGoogleAuthMessage(
+            "error",
+            "Failed to ensure justcalendar.json bootstrap config in Google Drive.",
+            {
+              status: response.status,
+              statusText: response.statusText,
+              payload,
+            },
+          );
+          return;
+        }
+
+        if (typeof payload?.fileId !== "string" || !payload.fileId.trim()) {
+          logGoogleAuthMessage(
+            "error",
+            "Drive bootstrap returned success but no config file id; will retry later.",
+            payload,
+          );
+          return;
+        }
+
+        hasBootstrappedDriveConfig = true;
+        if (payload.created) {
+          logGoogleAuthMessage(
+            "info",
+            "Created first-time justcalendar.json config in Google Drive.",
+            payload,
+          );
+        } else {
+          logGoogleAuthMessage(
+            "info",
+            "justcalendar.json already exists in Google Drive.",
+            payload,
+          );
+        }
+      } catch (error) {
+        logGoogleAuthMessage("error", "Drive config bootstrap request failed.", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })();
+
+    try {
+      await bootstrapDriveConfigPromise;
+    } finally {
+      bootstrapDriveConfigPromise = null;
+    }
+  };
+
   const setGoogleDriveUiState = ({
     connected = false,
     configured = true,
@@ -1098,6 +1376,10 @@ function setupProfileSwitcher({ switcher, button, options }) {
         ? drivePermissionId
         : "";
     switcher.classList.toggle("is-drive-connected", connected);
+    reorderGoogleDriveOption(connected);
+    if (!connected) {
+      hasBootstrappedDriveConfig = false;
+    }
 
     if (!configured) {
       setGoogleDriveText("Google Drive (Not Configured)");
@@ -1170,6 +1452,9 @@ function setupProfileSwitcher({ switcher, button, options }) {
             ? statusPayload.drivePermissionId
             : "",
       });
+      if (statusPayload?.connected) {
+        await ensureDriveBootstrapConfig();
+      }
 
       if (statusPayload?.identityConnected && statusPayload?.driveScopeGranted === false) {
         logGoogleAuthMessage(
