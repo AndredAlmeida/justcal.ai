@@ -1082,12 +1082,21 @@ function setupProfileSwitcher({ switcher, button, options }) {
     }
   };
 
-  const setGoogleDriveUiState = ({ connected = false, configured = true, openIdSubject = "" } = {}) => {
+  const setGoogleDriveUiState = ({
+    connected = false,
+    configured = true,
+    identityConnected = false,
+    driveScopeGranted = false,
+    drivePermissionId = "",
+  } = {}) => {
     if (!googleDriveButton) return;
 
     isGoogleDriveConnected = connected;
     isGoogleDriveConfigured = configured;
-    googleSub = connected && typeof openIdSubject === "string" ? openIdSubject : "";
+    googleSub =
+      (connected || identityConnected) && typeof drivePermissionId === "string"
+        ? drivePermissionId
+        : "";
     switcher.classList.toggle("is-drive-connected", connected);
 
     if (!configured) {
@@ -1123,9 +1132,13 @@ function setupProfileSwitcher({ switcher, button, options }) {
       return;
     }
 
+    const needsDriveReconnect = identityConnected && !driveScopeGranted;
+    const reconnectLabel = needsDriveReconnect
+      ? "Login to Google Drive (Grant Drive Access)"
+      : "Login to Google Drive";
     setGoogleDriveText("Login to Google Drive");
-    googleDriveButton.title = "Login to Google Drive";
-    googleDriveButton.setAttribute("aria-label", "Login to Google Drive");
+    googleDriveButton.title = reconnectLabel;
+    googleDriveButton.setAttribute("aria-label", reconnectLabel);
     if (googleDriveButton instanceof HTMLAnchorElement) {
       googleDriveButton.setAttribute("href", "/api/auth/google/start");
     }
@@ -1150,11 +1163,21 @@ function setupProfileSwitcher({ switcher, button, options }) {
       setGoogleDriveUiState({
         connected: Boolean(statusPayload?.connected),
         configured: Boolean(statusPayload?.configured ?? true),
-        openIdSubject:
-          typeof statusPayload?.openIdSubject === "string" ? statusPayload.openIdSubject : "",
+        identityConnected: Boolean(statusPayload?.identityConnected),
+        driveScopeGranted: Boolean(statusPayload?.driveScopeGranted),
+        drivePermissionId:
+          typeof statusPayload?.drivePermissionId === "string"
+            ? statusPayload.drivePermissionId
+            : "",
       });
 
-      if (!statusPayload?.connected) {
+      if (statusPayload?.identityConnected && statusPayload?.driveScopeGranted === false) {
+        logGoogleAuthMessage(
+          "warn",
+          "Google Drive session exists, but Drive scope is missing. Click Login to grant drive.file.",
+          statusPayload,
+        );
+      } else if (!statusPayload?.connected) {
         logGoogleAuthMessage("warn", "Google status indicates disconnected state.", {
           statusPayload,
           connectedCookie: hasGoogleConnectedCookie(),
@@ -1162,7 +1185,7 @@ function setupProfileSwitcher({ switcher, button, options }) {
       } else if (!statusPayload?.driveFolderReady) {
         logGoogleAuthMessage(
           "warn",
-          "Google account is connected but JustCalendar folder is not ready yet.",
+          "Google account is connected but JustCalendar.ai folder is not ready yet.",
           statusPayload,
         );
       }
@@ -1177,13 +1200,13 @@ function setupProfileSwitcher({ switcher, button, options }) {
       setGoogleDriveUiState({
         connected: false,
         configured: true,
-        openIdSubject: "",
+        drivePermissionId: "",
       });
       if (hasGoogleConnectedCookie()) {
         setGoogleDriveUiState({
           connected: true,
           configured: true,
-          openIdSubject: "",
+          drivePermissionId: "",
         });
       }
     }
@@ -1305,17 +1328,17 @@ function setupProfileSwitcher({ switcher, button, options }) {
           });
           const payload = await readResponsePayload(response);
           if (!response.ok || !payload?.ok) {
-            logGoogleAuthMessage("error", "Test 1 failed to ensure JustCalendar folder.", {
+            logGoogleAuthMessage("error", "Test 1 failed to ensure JustCalendar.ai folder.", {
               status: response.status,
               statusText: response.statusText,
               payload,
             });
           } else if (payload.created) {
-            logGoogleAuthMessage("info", "Test 1 created JustCalendar folder.", payload);
+            logGoogleAuthMessage("info", "Test 1 created JustCalendar.ai folder.", payload);
           } else {
             logGoogleAuthMessage(
               "info",
-              "Test 1 confirmed JustCalendar folder already exists.",
+              "Test 1 confirmed JustCalendar.ai folder already exists.",
               payload,
             );
           }
@@ -1329,6 +1352,14 @@ function setupProfileSwitcher({ switcher, button, options }) {
           }
           await refreshGoogleDriveStatus();
         }
+        setExpanded(false);
+        return;
+      }
+
+      if (actionType === "test-2") {
+        event.preventDefault();
+        await refreshGoogleDriveStatus();
+        console.log("drive_permission_id", googleSub || null);
         setExpanded(false);
         return;
       }
@@ -1363,7 +1394,7 @@ function setupProfileSwitcher({ switcher, button, options }) {
     setGoogleDriveUiState({
       connected: true,
       configured: true,
-      openIdSubject: "",
+      drivePermissionId: "",
     });
   }
 

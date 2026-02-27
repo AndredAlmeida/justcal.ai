@@ -21,8 +21,8 @@ This `localStorage` data remains on your device/browser unless you clear it.
 ### B) Google Drive connection data (optional feature)
 If you choose **Login to Google Drive**, we process OAuth tokens to connect your account:
 
-- Requested scopes: `openid` and `https://www.googleapis.com/auth/drive.file`
-- We do **not** request `email` or `profile` scopes for this connection
+- Requested scope: `https://www.googleapis.com/auth/drive.file`
+- We do **not** request Google Sign-In, `email`, or `profile` scopes for this connection
 - Refresh/access tokens are stored server-side (not in browser `localStorage`)
 
 Tokens are used only to maintain the Google Drive connection and request valid access tokens when needed.

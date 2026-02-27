@@ -44,7 +44,7 @@ App scripts:
 ## Google Drive OAuth
 
 This app now supports server-side Google OAuth for Drive connect/login (no file picker UI in this step).
-Requested Google scopes: `openid` and `https://www.googleapis.com/auth/drive.file` (no `email` or `profile` scopes).
+Requested Google scope: `https://www.googleapis.com/auth/drive.file`.
 
 Implemented API endpoints (same origin as the app):
 

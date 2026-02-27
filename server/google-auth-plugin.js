@@ -10,12 +10,13 @@ const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
-const GOOGLE_OPENID_SCOPE = "openid";
+const GOOGLE_DRIVE_ABOUT_URL = "https://www.googleapis.com/drive/v3/about";
 const GOOGLE_DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
-const GOOGLE_SCOPES = [GOOGLE_OPENID_SCOPE, GOOGLE_DRIVE_FILE_SCOPE].join(" ");
-const JUSTCALENDAR_DRIVE_FOLDER_NAME = "JustCalendar";
+const GOOGLE_SCOPES = GOOGLE_DRIVE_FILE_SCOPE;
+const JUSTCALENDAR_DRIVE_FOLDER_NAME = "JustCalendar.ai";
 
 const pendingStates = new Map();
+let inFlightEnsureFolderPromise = null;
 
 function parseCookies(req) {
   const headerValue = req.headers?.cookie;
@@ -85,37 +86,6 @@ function getSharedCookieDomain(requestOrigin) {
   return "";
 }
 
-function decodeJwtPayload(jwtToken) {
-  if (typeof jwtToken !== "string" || !jwtToken.trim()) {
-    return null;
-  }
-
-  const tokenParts = jwtToken.split(".");
-  if (tokenParts.length < 2) {
-    return null;
-  }
-
-  try {
-    const payloadSegment = tokenParts[1];
-    const base64 = payloadSegment.replace(/-/g, "+").replace(/_/g, "/");
-    const paddingNeeded = (4 - (base64.length % 4)) % 4;
-    const padded = base64.padEnd(base64.length + paddingNeeded, "=");
-    const decoded = Buffer.from(padded, "base64").toString("utf8");
-    return JSON.parse(decoded);
-  } catch {
-    return null;
-  }
-}
-
-function extractOpenIdSubjectFromIdToken(idToken) {
-  const payload = decodeJwtPayload(idToken);
-  if (!payload || typeof payload !== "object") {
-    return "";
-  }
-
-  return typeof payload.sub === "string" ? payload.sub : "";
-}
-
 function escapeDriveQueryValue(value) {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
@@ -134,14 +104,59 @@ function hasGoogleScope(scopeValue, expectedScope) {
 }
 
 function mergeGoogleScopes(primaryScopeValue, fallbackScopeValue) {
-  const mergedSet = new Set();
-  for (const scopeToken of parseScopeSet(fallbackScopeValue)) {
-    mergedSet.add(scopeToken);
+  const primaryScopeSet = parseScopeSet(primaryScopeValue);
+  if (primaryScopeSet.size > 0) {
+    return Array.from(primaryScopeSet).join(" ").trim();
   }
-  for (const scopeToken of parseScopeSet(primaryScopeValue)) {
-    mergedSet.add(scopeToken);
+
+  const fallbackScopeSet = parseScopeSet(fallbackScopeValue);
+  if (fallbackScopeSet.size > 0) {
+    return Array.from(fallbackScopeSet).join(" ").trim();
   }
-  return Array.from(mergedSet).join(" ").trim();
+
+  return "";
+}
+
+function isInsufficientDriveScopeError(folderResult) {
+  if (
+    !folderResult ||
+    typeof folderResult !== "object" ||
+    (folderResult.error !== "folder_lookup_failed" && folderResult.error !== "folder_create_failed")
+  ) {
+    return false;
+  }
+
+  const details = folderResult.details;
+  if (!details || typeof details !== "object") {
+    return false;
+  }
+
+  const errorsList = Array.isArray(details.errors) ? details.errors : [];
+  if (
+    errorsList.some(
+      (entry) =>
+        entry &&
+        typeof entry === "object" &&
+        (entry.reason === "insufficientPermissions" ||
+          entry.reason === "ACCESS_TOKEN_SCOPE_INSUFFICIENT"),
+    )
+  ) {
+    return true;
+  }
+
+  const detailsList = Array.isArray(details.details) ? details.details : [];
+  if (
+    detailsList.some(
+      (entry) =>
+        entry &&
+        typeof entry === "object" &&
+        entry.reason === "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+    )
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 function buildGoogleAuthorizationUrl({ clientId, redirectUri, state }) {
@@ -151,7 +166,7 @@ function buildGoogleAuthorizationUrl({ clientId, redirectUri, state }) {
     ["response_type", "code"],
     ["scope", GOOGLE_SCOPES],
     ["access_type", "offline"],
-    ["prompt", "consent"],
+    ["prompt", "consent select_account"],
     ["include_granted_scopes", "false"],
     ["state", state],
   ];
@@ -181,13 +196,13 @@ function normalizeStoredAuthState(rawState) {
   const scope =
     typeof storedState.scope === "string" && storedState.scope.trim()
       ? storedState.scope.trim()
-      : GOOGLE_SCOPES;
+      : "";
   const accessTokenExpiresAt = Number.isFinite(Number(storedState.accessTokenExpiresAt))
     ? Number(storedState.accessTokenExpiresAt)
     : 0;
-  const openIdSubject =
-    typeof storedState.openIdSubject === "string" && storedState.openIdSubject.trim()
-      ? storedState.openIdSubject.trim()
+  const drivePermissionId =
+    typeof storedState.drivePermissionId === "string" && storedState.drivePermissionId.trim()
+      ? storedState.drivePermissionId.trim()
       : "";
   const driveFolderId =
     typeof storedState.driveFolderId === "string" && storedState.driveFolderId.trim()
@@ -205,7 +220,7 @@ function normalizeStoredAuthState(rawState) {
     tokenType,
     scope,
     accessTokenExpiresAt,
-    openIdSubject,
+    drivePermissionId,
     driveFolderId,
     updatedAt,
   };
@@ -390,6 +405,52 @@ async function ensureJustCalendarFolder({ accessToken }) {
   };
 }
 
+async function fetchDrivePermissionId({ accessToken }) {
+  if (!accessToken) {
+    return {
+      ok: false,
+      error: "missing_access_token",
+    };
+  }
+
+  const aboutUrl = new URL(GOOGLE_DRIVE_ABOUT_URL);
+  aboutUrl.searchParams.set("fields", "user(permissionId)");
+
+  const response = await fetch(aboutUrl, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: AbortSignal.timeout(8_000),
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: "drive_identity_lookup_failed",
+      status: response.status,
+      details: payload?.error || "unknown_error",
+    };
+  }
+
+  const permissionId =
+    payload && payload.user && typeof payload.user.permissionId === "string"
+      ? payload.user.permissionId
+      : "";
+  if (!permissionId) {
+    return {
+      ok: false,
+      error: "drive_identity_missing_permission_id",
+    };
+  }
+
+  return {
+    ok: true,
+    permissionId,
+  };
+}
+
 async function refreshAccessToken({ config, storedState }) {
   if (!storedState.refreshToken) {
     return {
@@ -460,19 +521,20 @@ async function refreshAccessToken({ config, storedState }) {
     };
   }
 
-  const nextState = writeStoredAuthState({
-    ...storedState,
-    accessToken: nextAccessToken,
+    const nextState = writeStoredAuthState({
+      ...storedState,
+      accessToken: nextAccessToken,
     tokenType:
       typeof tokenPayload.token_type === "string" && tokenPayload.token_type
         ? tokenPayload.token_type
         : storedState.tokenType || "Bearer",
-    scope: mergeGoogleScopes(tokenPayload.scope, storedState.scope || GOOGLE_SCOPES),
+    scope: mergeGoogleScopes(tokenPayload.scope, storedState.scope || ""),
     accessTokenExpiresAt: nextExpiry,
     refreshToken:
       typeof tokenPayload.refresh_token === "string" && tokenPayload.refresh_token
         ? tokenPayload.refresh_token
         : storedState.refreshToken,
+    drivePermissionId: storedState.drivePermissionId || "",
     updatedAt: new Date().toISOString(),
   });
 
@@ -551,12 +613,13 @@ async function refreshAccessTokenForNonCriticalTask({ config, storedState }) {
       typeof tokenPayload.token_type === "string" && tokenPayload.token_type
         ? tokenPayload.token_type
         : storedState.tokenType || "Bearer",
-    scope: mergeGoogleScopes(tokenPayload.scope, storedState.scope || GOOGLE_SCOPES),
+    scope: mergeGoogleScopes(tokenPayload.scope, storedState.scope || ""),
     accessTokenExpiresAt: nextExpiry,
     refreshToken:
       typeof tokenPayload.refresh_token === "string" && tokenPayload.refresh_token
         ? tokenPayload.refresh_token
         : storedState.refreshToken,
+    drivePermissionId: storedState.drivePermissionId || "",
     updatedAt: new Date().toISOString(),
   });
 
@@ -600,62 +663,114 @@ function hasSufficientlyValidAccessToken(storedState, minimumLifetimeMs = 30_000
 
 async function ensureJustCalendarFolderForCurrentConnection({ accessToken = "", config } = {}) {
   let storedState = readStoredAuthState();
-  let tokenToUse =
-    typeof accessToken === "string" && accessToken.trim()
-      ? accessToken.trim()
-      : hasSufficientlyValidAccessToken(storedState)
-        ? storedState.accessToken
-        : "";
-  if (!tokenToUse && config?.clientId && config?.clientSecret && storedState.refreshToken) {
-    const refreshResult = await refreshAccessTokenForNonCriticalTask({
-      config,
-      storedState,
-    });
-    if (refreshResult.ok) {
-      storedState = refreshResult.state;
-      tokenToUse = storedState.accessToken;
-    } else {
+  if (!hasGoogleScope(storedState.scope, GOOGLE_DRIVE_FILE_SCOPE)) {
+    return {
+      ok: false,
+      error: "missing_drive_scope",
+      status: 403,
+      details: {
+        message:
+          "Current Google token does not include drive.file scope. Reconnect and approve Google Drive access.",
+      },
+    };
+  }
+
+  if (storedState.driveFolderId) {
+    return {
+      ok: true,
+      created: false,
+      folderId: storedState.driveFolderId,
+    };
+  }
+
+  if (inFlightEnsureFolderPromise) {
+    return inFlightEnsureFolderPromise;
+  }
+
+  inFlightEnsureFolderPromise = (async () => {
+    let freshState = readStoredAuthState();
+    if (freshState.driveFolderId) {
+      return {
+        ok: true,
+        created: false,
+        folderId: freshState.driveFolderId,
+      };
+    }
+
+    let tokenToUse =
+      typeof accessToken === "string" && accessToken.trim()
+        ? accessToken.trim()
+        : hasSufficientlyValidAccessToken(freshState)
+          ? freshState.accessToken
+          : "";
+    if (!tokenToUse && config?.clientId && config?.clientSecret && freshState.refreshToken) {
+      const refreshResult = await refreshAccessTokenForNonCriticalTask({
+        config,
+        storedState: freshState,
+      });
+      if (refreshResult.ok) {
+        freshState = refreshResult.state;
+        tokenToUse = freshState.accessToken;
+      } else {
+        return {
+          ok: false,
+          error: "token_unavailable",
+          status: refreshResult.status || 401,
+          details: refreshResult.payload || {
+            message:
+              "No valid access token available for non-critical folder ensure. Login state is unchanged.",
+          },
+        };
+      }
+    }
+    if (!tokenToUse) {
       return {
         ok: false,
         error: "token_unavailable",
-        status: refreshResult.status || 401,
-        details: refreshResult.payload || {
+        status: 401,
+        details: {
           message:
             "No valid access token available for non-critical folder ensure. Login state is unchanged.",
         },
       };
     }
-  }
-  if (!tokenToUse) {
-    return {
-      ok: false,
-      error: "token_unavailable",
-      status: 401,
-      details: {
-        message:
-          "No valid access token available for non-critical folder ensure. Login state is unchanged.",
-      },
-    };
-  }
 
-  const folderResult = await ensureJustCalendarFolder({
-    accessToken: tokenToUse,
-  });
-  if (!folderResult.ok) {
-    return folderResult;
-  }
-
-  const ensuredFolderId =
-    folderResult && typeof folderResult.folderId === "string" ? folderResult.folderId : "";
-  if (ensuredFolderId && ensuredFolderId !== storedState.driveFolderId) {
-    writeStoredAuthState({
-      ...storedState,
-      driveFolderId: ensuredFolderId,
-      updatedAt: new Date().toISOString(),
+    const folderResult = await ensureJustCalendarFolder({
+      accessToken: tokenToUse,
     });
-  }
+    if (!folderResult.ok) {
+      if (isInsufficientDriveScopeError(folderResult)) {
+        const remainingScopes = Array.from(parseScopeSet(freshState.scope)).filter(
+          (scopeValue) => scopeValue !== GOOGLE_DRIVE_FILE_SCOPE,
+        );
+        writeStoredAuthState({
+          ...freshState,
+          scope: remainingScopes.join(" ").trim(),
+          driveFolderId: "",
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      return folderResult;
+    }
 
-  return folderResult;
+    const ensuredFolderId =
+      folderResult && typeof folderResult.folderId === "string" ? folderResult.folderId : "";
+    if (ensuredFolderId && ensuredFolderId !== freshState.driveFolderId) {
+      writeStoredAuthState({
+        ...freshState,
+        driveFolderId: ensuredFolderId,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    return folderResult;
+  })();
+
+  try {
+    return await inFlightEnsureFolderPromise;
+  } finally {
+    inFlightEnsureFolderPromise = null;
+  }
 }
 
 function createGoogleAuthPlugin(config) {
@@ -738,13 +853,6 @@ function createGoogleAuthPlugin(config) {
       secure: secureCookie,
       domain: cookieDomain,
     });
-    const connectedCookie = buildCookie(OAUTH_CONNECTED_COOKIE, "1", {
-      maxAgeSeconds: 60 * 60 * 24 * 30,
-      httpOnly: false,
-      secure: secureCookie,
-      domain: cookieDomain,
-    });
-
     if (!state || !authorizationCode || !cookieState || cookieState !== state) {
       res.setHeader("Set-Cookie", clearStateCookie);
       jsonResponse(res, 400, {
@@ -811,7 +919,33 @@ function createGoogleAuthPlugin(config) {
       Number.isFinite(expiresInSeconds) && expiresInSeconds > 0
         ? Date.now() + expiresInSeconds * 1000
         : Date.now() + 55 * 60 * 1000;
-    const openIdSubject = extractOpenIdSubjectFromIdToken(tokenPayload?.id_token);
+    const grantedScope = mergeGoogleScopes(tokenPayload.scope, existingState.scope || "");
+    const hasDriveScope = hasGoogleScope(grantedScope, GOOGLE_DRIVE_FILE_SCOPE);
+    let drivePermissionId = existingState.drivePermissionId || "";
+    if (accessToken && hasDriveScope) {
+      const driveIdentityResult = await fetchDrivePermissionId({ accessToken });
+      if (driveIdentityResult.ok) {
+        drivePermissionId = driveIdentityResult.permissionId;
+      } else {
+        console.warn(
+          "Google Drive identity lookup failed during login callback.",
+          driveIdentityResult,
+        );
+      }
+    }
+    const connectedCookie = hasDriveScope
+      ? buildCookie(OAUTH_CONNECTED_COOKIE, "1", {
+          maxAgeSeconds: 60 * 60 * 24 * 30,
+          httpOnly: false,
+          secure: secureCookie,
+          domain: cookieDomain,
+        })
+      : buildCookie(OAUTH_CONNECTED_COOKIE, "", {
+          maxAgeSeconds: 0,
+          httpOnly: false,
+          secure: secureCookie,
+          domain: cookieDomain,
+        });
 
     writeStoredAuthState({
       refreshToken,
@@ -820,10 +954,10 @@ function createGoogleAuthPlugin(config) {
         typeof tokenPayload.token_type === "string" && tokenPayload.token_type
           ? tokenPayload.token_type
           : "Bearer",
-      scope: mergeGoogleScopes(tokenPayload.scope, existingState.scope || GOOGLE_SCOPES),
+      scope: grantedScope,
       accessTokenExpiresAt,
-      openIdSubject: openIdSubject || existingState.openIdSubject || "",
-      driveFolderId: existingState.driveFolderId || "",
+      drivePermissionId,
+      driveFolderId: hasDriveScope ? existingState.driveFolderId || "" : "",
       updatedAt: new Date().toISOString(),
     });
 
@@ -856,9 +990,9 @@ function createGoogleAuthPlugin(config) {
       Boolean(storedState.accessToken) && storedState.accessTokenExpiresAt > Date.now() + 30_000;
     const hasIdentitySession = Boolean(storedState.refreshToken || hasValidAccessToken);
     const hasDriveScope = hasGoogleScope(storedState.scope, GOOGLE_DRIVE_FILE_SCOPE);
-    const isConnected = hasIdentitySession;
+    const isConnected = hasIdentitySession && hasDriveScope;
 
-    if (isConnected && hasValidAccessToken && !storedState.driveFolderId) {
+    if (isConnected && hasDriveScope && hasValidAccessToken && !storedState.driveFolderId) {
       void ensureJustCalendarFolderForCurrentConnection({ config: googleConfig }).catch(() => {
         // Folder creation is best-effort and should not block status checks.
       });
@@ -868,7 +1002,7 @@ function createGoogleAuthPlugin(config) {
       connected: isConnected,
       identityConnected: hasIdentitySession,
       profile: null,
-      openIdSubject: hasIdentitySession ? storedState.openIdSubject : "",
+      drivePermissionId: hasIdentitySession ? storedState.drivePermissionId : "",
       scopes: hasIdentitySession ? storedState.scope : "",
       driveScopeGranted: hasIdentitySession ? hasDriveScope : false,
       driveFolderReady: hasIdentitySession ? Boolean(storedState.driveFolderId) : false,

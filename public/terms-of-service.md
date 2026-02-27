@@ -27,7 +27,7 @@ If local browser data is deleted, reset, corrupted, or unavailable, your stored 
 
 If you choose to connect Google Drive:
 
-- OAuth scopes requested are: `openid` and `https://www.googleapis.com/auth/drive.file`
+- OAuth scope requested is: `https://www.googleapis.com/auth/drive.file`
 - You authorize the Service to request and refresh Google access tokens to support this feature
 - You can disconnect the integration from the Service and/or revoke access in your Google account settings
 
