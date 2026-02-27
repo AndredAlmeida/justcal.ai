@@ -7,6 +7,9 @@ const calendarContainer = document.getElementById("calendar-scroll");
 const yearViewContainer = document.getElementById("year-view");
 const appRoot = document.getElementById("app");
 const headerCalendarsButton = document.getElementById("header-calendars-btn");
+const profileSwitcher = document.getElementById("profile-switcher");
+const headerProfileButton = document.getElementById("header-profile-btn");
+const profileOptions = document.getElementById("profile-options");
 const returnToCurrentButton = document.getElementById("return-to-current");
 const themeToggleButton = document.getElementById("theme-toggle");
 const mobileDebugToggleButton = document.getElementById("mobile-debug-toggle");
@@ -1015,6 +1018,55 @@ function setupTelegramLogPanel({ toggleButton, panel, backdrop, closeButton }) {
   });
 }
 
+function setupProfileSwitcher({ switcher, button, options }) {
+  const optionButtons = [...options.querySelectorAll("button[data-profile-action]")];
+  const setExpanded = (isExpanded, { focusButton = false } = {}) => {
+    switcher.classList.toggle("is-expanded", isExpanded);
+    button.setAttribute("aria-expanded", String(isExpanded));
+    button.setAttribute("aria-label", isExpanded ? "Close account menu" : "Open account menu");
+    button.setAttribute("data-tooltip", isExpanded ? "Close Account Menu" : "Account Menu");
+
+    if (!isExpanded && focusButton) {
+      button.focus({ preventScroll: true });
+    }
+  };
+
+  setExpanded(false);
+
+  button.addEventListener("click", () => {
+    const shouldExpand = !switcher.classList.contains("is-expanded");
+    setExpanded(shouldExpand);
+  });
+
+  optionButtons.forEach((optionButton) => {
+    optionButton.addEventListener("click", () => {
+      setExpanded(false);
+    });
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!switcher.classList.contains("is-expanded")) {
+      return;
+    }
+    const clickTarget = event.target;
+    if (!(clickTarget instanceof Node)) {
+      return;
+    }
+    if (switcher.contains(clickTarget)) {
+      return;
+    }
+    setExpanded(false);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !switcher.classList.contains("is-expanded")) {
+      return;
+    }
+    event.preventDefault();
+    setExpanded(false, { focusButton: true });
+  });
+}
+
 function setupTelegramLogFrameThemeSync(frame) {
   const applyFrameTheme = () => {
     const frameDocument = frame.contentDocument;
@@ -1177,6 +1229,14 @@ const jumpToPresentDay = () => {
 
 if (themeToggleButton) {
   setupThemeToggle(themeToggleButton);
+}
+
+if (profileSwitcher && headerProfileButton && profileOptions) {
+  setupProfileSwitcher({
+    switcher: profileSwitcher,
+    button: headerProfileButton,
+    options: profileOptions,
+  });
 }
 
 if (telegramLogToggleButton && telegramLogPanel) {

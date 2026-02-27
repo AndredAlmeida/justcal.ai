@@ -351,6 +351,56 @@
         min-width: 2.1rem;
       }
 
+      #header-calendars-btn .calendar-current-name {
+        max-width: clamp(5.8rem, 16vw, 10.6rem);
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      #profile-switcher {
+        position: relative;
+        z-index: 44;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        min-width: 2.1rem;
+      }
+
+      #header-profile-btn {
+        appearance: none;
+        width: 2.22rem;
+        height: 2.22rem;
+        border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+        border-radius: 999px;
+        padding: 0;
+        display: inline-grid;
+        place-items: center;
+        color: var(--ink);
+        background: linear-gradient(
+          180deg,
+          color-mix(in srgb, var(--panel) 92%, #ffffff 8%) 0%,
+          color-mix(in srgb, var(--panel) 97%, transparent) 100%
+        );
+        box-shadow: 0 2px 8px color-mix(in srgb, #0f172a 84%, transparent);
+        cursor: pointer;
+        transition:
+          transform 0.16s ease,
+          border-color 0.16s ease,
+          background-color 0.16s ease,
+          box-shadow 0.2s ease;
+      }
+
+      .profile-user-icon {
+        width: 1.05rem;
+        height: 1.05rem;
+        display: block;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.85;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
       #header-pinned-calendars {
         display: inline-flex;
         align-items: center;
@@ -2013,6 +2063,59 @@
         overflow-y: auto;
       }
 
+      #profile-options {
+        position: absolute;
+        right: 0;
+        top: calc(100% + 0.42rem);
+        transform: translateY(-0.28rem);
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        width: min(14.2rem, 74vw);
+        padding: 0.42rem 0;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.22);
+        max-height: 0;
+        opacity: 0;
+        overflow: hidden;
+        pointer-events: none;
+        z-index: 48;
+        transition:
+          max-height 0.24s ease,
+          opacity 0.18s ease,
+          transform 0.18s ease;
+      }
+
+      #profile-switcher.is-expanded #profile-options {
+        max-height: calc(100dvh - 8rem);
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+        overflow-y: auto;
+      }
+
+      .profile-options-title {
+        margin: 0;
+        padding: 0.08rem 0.88rem 0.34rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        text-align: center;
+        color: var(--ink);
+        opacity: 0.92;
+      }
+
+      #profile-options .profile-option {
+        min-height: 2.2rem;
+        border: 0;
+        border-radius: 0;
+        padding: 0.4rem 0.82rem;
+        justify-content: flex-start;
+      }
+
       #calendar-switcher.is-expanded.is-adding #calendar-options {
         max-height: calc(100dvh - 5.5rem);
       }
@@ -2849,6 +2952,15 @@
         );
       }
 
+      #profile-switcher.is-expanded #header-profile-btn {
+        border-color: color-mix(in srgb, var(--line) 56%, var(--score-slider-active) 44%);
+        background: linear-gradient(
+          180deg,
+          color-mix(in srgb, var(--muted) 90%, var(--score-slider-active) 10%) 0%,
+          color-mix(in srgb, var(--muted) 96%, #ffffff 4%) 100%
+        );
+      }
+
       #calendar-switcher.is-expanded #header-calendars-btn::after {
         opacity: 0.88;
         transform: translateY(calc(0.02rem - 2px)) rotate(-135deg);
@@ -2964,11 +3076,32 @@
           0 0 18px color-mix(in srgb, var(--active-calendar-color) 30%, transparent);
       }
 
+      #header-profile-btn:hover {
+        transform: translateY(-1px);
+        border-color: color-mix(
+          in srgb,
+          var(--line) 54%,
+          var(--score-slider-active) 46%
+        );
+        box-shadow:
+          0 4px 10px color-mix(in srgb, #0f172a 78%, transparent),
+          0 0 0 1px color-mix(in srgb, var(--score-slider-active) 28%, transparent);
+      }
+
       #header-calendars-btn:active {
         transform: translateY(0);
       }
 
+      #header-profile-btn:active {
+        transform: translateY(0);
+      }
+
       #header-calendars-btn:focus-visible {
+        outline: 2px solid #3b82f6;
+        outline-offset: 2px;
+      }
+
+      #header-profile-btn:focus-visible {
         outline: 2px solid #3b82f6;
         outline-offset: 2px;
       }
@@ -3044,7 +3177,8 @@
         transform: translate(-50%, 0);
       }
 
-      #calendar-switcher.is-expanded .tooltip-target.tooltip-bottom::after {
+      #calendar-switcher.is-expanded .tooltip-target.tooltip-bottom::after,
+      #profile-switcher.is-expanded .tooltip-target.tooltip-bottom::after {
         opacity: 0;
         transform: translate(-50%, -4px);
       }
@@ -3453,8 +3587,22 @@
           font-size: 0.69rem;
         }
 
+        #header-calendars-btn .calendar-current-name {
+          max-width: 4.9rem;
+        }
+
         #calendar-switcher {
           gap: 0.3rem;
+        }
+
+        #header-profile-btn {
+          width: 2.02rem;
+          height: 2.02rem;
+        }
+
+        .profile-user-icon {
+          width: 0.92rem;
+          height: 0.92rem;
         }
 
         #header-pinned-calendars {
@@ -3812,6 +3960,11 @@
 
         #calendar-switcher.is-expanded #calendar-options {
           width: min(12.5rem, 72vw);
+          max-height: calc(100dvh - 6.4rem);
+        }
+
+        #profile-switcher.is-expanded #profile-options {
+          width: min(12.8rem, 78vw);
           max-height: calc(100dvh - 6.4rem);
         }
 
@@ -4473,6 +4626,49 @@
               <span class="calendar-current-name">Energy Tracker</span>
             </button>
           </span>
+        </div>
+        <div id="profile-switcher">
+          <div id="profile-options" aria-label="Account options">
+            <p class="profile-options-title">Account</p>
+            <div class="calendar-options-divider" aria-hidden="true"></div>
+            <button
+              type="button"
+              class="calendar-option profile-option"
+              data-profile-action="google-drive"
+              aria-label="Login with Google Drive"
+            >
+              Login with Google Drive
+            </button>
+            <button
+              type="button"
+              class="calendar-option profile-option"
+              data-profile-action="test-1"
+              aria-label="Test 1"
+            >
+              Test 1
+            </button>
+            <button
+              type="button"
+              class="calendar-option profile-option"
+              data-profile-action="test-2"
+              aria-label="Test 2"
+            >
+              Test 2
+            </button>
+          </div>
+          <button
+            id="header-profile-btn"
+            type="button"
+            class="tooltip-target tooltip-bottom"
+            data-tooltip="Account Menu"
+            aria-label="Open account menu"
+            aria-expanded="false"
+          >
+            <svg class="profile-user-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="8" r="3.45" />
+              <path d="M5.15 18.3c1.24-2.86 3.75-4.35 6.85-4.35s5.61 1.49 6.85 4.35" />
+            </svg>
+          </button>
         </div>
       </header>
       <section id="tweak-controls" aria-label="Day selection controls" hidden>
