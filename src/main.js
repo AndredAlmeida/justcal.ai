@@ -1036,6 +1036,7 @@ function setupProfileSwitcher({ switcher, button, options }) {
   const googleDriveButton = options.querySelector('[data-profile-action="google-drive"]');
   const googleDriveLabel = options.querySelector("#profile-google-drive-label");
   const optionsDivider = options.querySelector(".calendar-options-divider");
+  const driveBusyOverlay = document.getElementById("drive-busy-overlay");
   const GOOGLE_CONNECTED_COOKIE_NAME = "justcal_google_connected";
   const GOOGLE_AUTH_LOG_PREFIX = "[JustCalendar][GoogleDriveAuth]";
   let isGoogleDriveConnected = false;
@@ -1043,6 +1044,7 @@ function setupProfileSwitcher({ switcher, button, options }) {
   let googleSub = "";
   let hasBootstrappedDriveConfig = false;
   let bootstrapDriveConfigPromise = null;
+  let driveBusyCount = 0;
 
   const logGoogleAuthMessage = (level, message, details) => {
     const logger = typeof console[level] === "function" ? console[level] : console.log;
@@ -1051,6 +1053,25 @@ function setupProfileSwitcher({ switcher, button, options }) {
       return;
     }
     logger(`${GOOGLE_AUTH_LOG_PREFIX} ${message}`, details);
+  };
+
+  const setDriveBusy = (isBusy) => {
+    if (!driveBusyOverlay) return;
+    const wasBusy = driveBusyCount > 0;
+    if (isBusy) {
+      driveBusyCount += 1;
+    } else {
+      driveBusyCount = Math.max(0, driveBusyCount - 1);
+    }
+
+    const isOverlayActive = driveBusyCount > 0;
+    if (!wasBusy && isOverlayActive) {
+      logGoogleAuthMessage("info", "Loading started.");
+    } else if (wasBusy && !isOverlayActive) {
+      logGoogleAuthMessage("info", "Loading finished.");
+    }
+    driveBusyOverlay.classList.toggle("is-active", isOverlayActive);
+    driveBusyOverlay.setAttribute("aria-hidden", String(!isOverlayActive));
   };
 
   const readResponsePayload = async (response) => {
@@ -1535,6 +1556,7 @@ function setupProfileSwitcher({ switcher, button, options }) {
       return;
     }
 
+    setDriveBusy(true);
     bootstrapDriveConfigPromise = (async () => {
       try {
         const response = await fetch("/api/auth/google/bootstrap-config", {
@@ -1608,6 +1630,7 @@ function setupProfileSwitcher({ switcher, button, options }) {
       await bootstrapDriveConfigPromise;
     } finally {
       bootstrapDriveConfigPromise = null;
+      setDriveBusy(false);
     }
   };
 
@@ -1853,6 +1876,7 @@ function setupProfileSwitcher({ switcher, button, options }) {
         if (optionButton instanceof HTMLButtonElement) {
           optionButton.disabled = true;
         }
+        setDriveBusy(true);
 
         try {
           const response = await fetch("/api/auth/google/save-state", {
@@ -1884,6 +1908,7 @@ function setupProfileSwitcher({ switcher, button, options }) {
           if (optionButton instanceof HTMLButtonElement) {
             optionButton.disabled = false;
           }
+          setDriveBusy(false);
           await refreshGoogleDriveStatus();
         }
         setExpanded(false);
@@ -1915,6 +1940,7 @@ function setupProfileSwitcher({ switcher, button, options }) {
         if (optionButton instanceof HTMLButtonElement) {
           optionButton.disabled = true;
         }
+        setDriveBusy(true);
 
         try {
           const response = await fetch("/api/auth/google/load-state", {
@@ -1958,6 +1984,7 @@ function setupProfileSwitcher({ switcher, button, options }) {
           if (optionButton instanceof HTMLButtonElement) {
             optionButton.disabled = false;
           }
+          setDriveBusy(false);
           await refreshGoogleDriveStatus();
         }
 

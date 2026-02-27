@@ -3458,6 +3458,52 @@
         color-scheme: light dark;
       }
 
+      #drive-busy-overlay {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: color-mix(in srgb, #020617 66%, transparent);
+        opacity: 0;
+        pointer-events: none;
+        z-index: 230;
+        transition: opacity 0.2s ease;
+      }
+
+      #drive-busy-overlay.is-active {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .drive-busy-wheel {
+        width: 3rem;
+        height: 3rem;
+        border-radius: 999px;
+        color: color-mix(in srgb, #ffffff 88%, var(--ink) 12%);
+        background: conic-gradient(
+          from 0deg,
+          color-mix(in srgb, currentColor 10%, transparent) 0deg,
+          color-mix(in srgb, currentColor 14%, transparent) 40deg,
+          color-mix(in srgb, currentColor 22%, transparent) 80deg,
+          color-mix(in srgb, currentColor 34%, transparent) 120deg,
+          color-mix(in srgb, currentColor 48%, transparent) 160deg,
+          color-mix(in srgb, currentColor 64%, transparent) 200deg,
+          color-mix(in srgb, currentColor 88%, transparent) 240deg,
+          currentColor 300deg,
+          color-mix(in srgb, currentColor 74%, transparent) 360deg
+        );
+        -webkit-mask: radial-gradient(circle, transparent 57%, #000 59%);
+        mask: radial-gradient(circle, transparent 57%, #000 59%);
+        filter: drop-shadow(0 3px 10px rgba(2, 6, 23, 0.45));
+        animation: drive-busy-spin 0.85s linear infinite;
+      }
+
+      @keyframes drive-busy-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
       :root.dark td.empty {
         color: #96a4ba;
       }
@@ -4980,6 +5026,14 @@
         />
       </svg>
     </a>
+    <div id="drive-busy-overlay" aria-hidden="true">
+      <div
+        class="drive-busy-wheel"
+        role="status"
+        aria-live="polite"
+        aria-label="Loading"
+      ></div>
+    </div>
     <div id="telegram-log-panel-backdrop" aria-hidden="true"></div>
     <section
       id="telegram-log-panel"
