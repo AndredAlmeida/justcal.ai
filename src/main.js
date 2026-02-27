@@ -1264,6 +1264,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
   let googleSub = "";
   let hasBootstrappedDriveConfig = false;
   let bootstrapDriveConfigPromise = null;
+  let loadDriveStatePromise = null;
   let driveBusyCount = 0;
   let cachedDriveAccessToken = "";
   let cachedDriveAccessTokenExpiresAt = 0;
@@ -3681,6 +3682,100 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     }
   };
 
+  const loadDriveStateViaBackend = async ({
+    successLogMessage = "Loaded calendars and data from Google Drive and replaced local state.",
+    matchLogMessage = "Load finished; local state already matched Drive.",
+    missingLogMessage = "Load completed, but no remote state was found in Google Drive.",
+    noRemoteStateLogMessage = missingLogMessage,
+    failureLogMessage = "Load failed while reading state from Google Drive.",
+  } = {}) => {
+    if (loadDriveStatePromise) {
+      return loadDriveStatePromise;
+    }
+
+    loadDriveStatePromise = (async () => {
+      try {
+        const response = await backendFetch("/api/auth/google/load-state", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+        const payload = await readResponsePayload(response);
+        if (!response.ok || !payload?.ok) {
+          logGoogleAuthMessage("error", failureLogMessage, {
+            status: response.status,
+            statusText: response.statusText,
+            payload,
+          });
+          return {
+            ok: false,
+            status: response.status,
+            statusText: response.statusText,
+            payload,
+          };
+        }
+
+        syncDriveRuntimeCacheFromPayload(payload);
+
+        if (payload?.missing) {
+          hasBootstrappedDriveConfig = false;
+          logGoogleAuthMessage("warn", missingLogMessage, payload);
+          return {
+            ok: true,
+            missing: true,
+            imported: false,
+            payload,
+          };
+        }
+
+        if (!isObjectLike(payload?.remoteState)) {
+          hasBootstrappedDriveConfig = true;
+          logGoogleAuthMessage("warn", noRemoteStateLogMessage, payload);
+          return {
+            ok: true,
+            missing: false,
+            imported: false,
+            payload,
+          };
+        }
+
+        const importedFromDrive = syncLocalStateFromDrive(payload);
+        hasBootstrappedDriveConfig = true;
+        if (importedFromDrive) {
+          logGoogleAuthMessage("info", successLogMessage);
+          if (typeof onDriveStateImported === "function") {
+            onDriveStateImported(payload);
+          }
+        } else {
+          logGoogleAuthMessage("info", matchLogMessage);
+        }
+
+        return {
+          ok: true,
+          missing: false,
+          imported: importedFromDrive,
+          payload,
+        };
+      } catch (error) {
+        logGoogleAuthMessage("error", `${failureLogMessage} Request exception.`, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return {
+          ok: false,
+          error: "request_exception",
+          details: error instanceof Error ? error.message : String(error),
+        };
+      }
+    })();
+
+    try {
+      return await loadDriveStatePromise;
+    } finally {
+      loadDriveStatePromise = null;
+    }
+  };
+
   const setGoogleDriveUiState = ({
     connected = false,
     configured = true,
@@ -3775,7 +3870,31 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
             : "",
       });
       if (statusPayload?.connected) {
-        await ensureDriveBootstrapConfig();
+        if (!hasBootstrappedDriveConfig) {
+          if (statusPayload?.driveConfigReady) {
+            let shouldEnsureConfigAfterLoad = false;
+            setDriveBusy(true);
+            try {
+              const loadResult = await loadDriveStateViaBackend({
+                successLogMessage: "Loaded calendars and data from Google Drive during startup.",
+                matchLogMessage: "Startup load finished; local state already matched Drive.",
+                missingLogMessage:
+                  "No justcalendar.json config found in Google Drive during startup; creating bootstrap config.",
+                noRemoteStateLogMessage:
+                  "Startup load completed, but no remote state was returned from Google Drive.",
+                failureLogMessage: "Startup load failed while reading state from Google Drive.",
+              });
+              shouldEnsureConfigAfterLoad = Boolean(loadResult?.ok && loadResult?.missing);
+            } finally {
+              setDriveBusy(false);
+            }
+            if (shouldEnsureConfigAfterLoad) {
+              await ensureDriveBootstrapConfig();
+            }
+          } else {
+            await ensureDriveBootstrapConfig();
+          }
+        }
       }
 
       if (statusPayload?.identityConnected && statusPayload?.driveScopeGranted === false) {
@@ -4073,46 +4192,11 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
         setDriveBusy(true);
 
         try {
-          const response = await backendFetch("/api/auth/google/load-state", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-          });
-          const payload = await readResponsePayload(response);
-          if (!response.ok || !payload?.ok) {
-            logGoogleAuthMessage("error", "Load failed while reading state from Google Drive.", {
-              status: response.status,
-              statusText: response.statusText,
-              payload,
-            });
-          } else if (!isObjectLike(payload?.remoteState)) {
-            syncDriveRuntimeCacheFromPayload(payload);
-            logGoogleAuthMessage(
-              "warn",
-              "Load completed, but no remote state was found in Google Drive.",
-              payload,
-            );
-          } else {
-            syncDriveRuntimeCacheFromPayload(payload);
-            const importedFromDrive = syncLocalStateFromDrive(payload);
-            if (importedFromDrive) {
-              hasBootstrappedDriveConfig = true;
-              logGoogleAuthMessage(
-                "info",
-                "Loaded calendars and data from Google Drive and replaced local state.",
-              );
-              if (typeof onDriveStateImported === "function") {
-                onDriveStateImported(payload);
-              }
-              setExpanded(false);
-              return;
-            }
-            logGoogleAuthMessage("info", "Load finished; local state already matched Drive.");
-          }
-        } catch (error) {
-          logGoogleAuthMessage("error", "Load request failed.", {
-            error: error instanceof Error ? error.message : String(error),
+          await loadDriveStateViaBackend({
+            successLogMessage: "Loaded calendars and data from Google Drive and replaced local state.",
+            matchLogMessage: "Load finished; local state already matched Drive.",
+            missingLogMessage: "Load completed, but no remote state was found in Google Drive.",
+            failureLogMessage: "Load failed while reading state from Google Drive.",
           });
         } finally {
           if (optionButton instanceof HTMLButtonElement) {

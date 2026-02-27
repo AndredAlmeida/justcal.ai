@@ -61,6 +61,7 @@ const SUPPORTED_BOOTSTRAP_THEMES = new Set([
   "solarized-dark",
   "solarized-light",
 ]);
+const DRIVE_DATA_LOAD_CONCURRENCY = 5;
 
 const pendingStates = new Map();
 let inFlightEnsureFolderPromise = null;
@@ -248,6 +249,11 @@ function toCalendarNameLookupKey(rawName) {
 
 function isObjectRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeDriveFileId(rawValue) {
+  const candidateId = typeof rawValue === "string" ? rawValue.trim() : "";
+  return candidateId || "";
 }
 
 function normalizeBootstrapCheckValue(rawDayValue) {
@@ -578,6 +584,9 @@ function normalizeBootstrapCalendars(rawCalendars) {
         calendarType === "score"
           ? normalizeBootstrapScoreDisplay(rawCalendar.display)
           : undefined;
+      const calendarDataFileId = normalizeDriveFileId(
+        rawCalendar["data-file-id"] || rawCalendar.dataFileId,
+      );
       return {
         id: normalizeIncomingCalendarId(rawCalendar.id),
         name: normalizeBootstrapCalendarName(rawCalendar.name, fallbackName),
@@ -585,6 +594,7 @@ function normalizeBootstrapCalendars(rawCalendars) {
         color: calendarColor,
         pinned: calendarPinned,
         ...(calendarDisplay ? { display: calendarDisplay } : {}),
+        ...(calendarDataFileId ? { dataFileId: calendarDataFileId } : {}),
         data: normalizeBootstrapCalendarDayEntries(rawCalendar.data, calendarType),
       };
     })
@@ -638,6 +648,7 @@ function buildJustCalendarBootstrapBundle(rawPayload = {}) {
         ? { display: normalizeBootstrapScoreDisplay(calendar.display) }
         : {}),
       dataFile,
+      ...(calendar.dataFileId ? { dataFileId: normalizeDriveFileId(calendar.dataFileId) } : {}),
       data: normalizeBootstrapCalendarDayEntries(calendar.data, calendar.type),
     };
   });
@@ -650,6 +661,7 @@ function buildJustCalendarBootstrapBundle(rawPayload = {}) {
     pinned: calendar.pinned,
     ...(calendar.type === "score" && calendar.display ? { display: calendar.display } : {}),
     "data-file": calendar.dataFile,
+    ...(calendar.dataFileId ? { "data-file-id": normalizeDriveFileId(calendar.dataFileId) } : {}),
   }));
   const currentCalendarId =
     requestedCurrentCalendarId &&
@@ -1272,7 +1284,27 @@ async function ensureJustCalendarConfigFile({
   folderId,
   configPayload,
   allowCreateIfMissing = true,
+  preferredFileId = "",
 }) {
+  const normalizedPreferredFileId = normalizeDriveFileId(preferredFileId);
+  if (normalizedPreferredFileId) {
+    const readByIdResult = await readDriveJsonFileById({
+      accessToken,
+      fileId: normalizedPreferredFileId,
+    });
+    if (readByIdResult.ok) {
+      return {
+        ok: true,
+        created: false,
+        fileId: normalizedPreferredFileId,
+        payload: isObjectRecord(readByIdResult.payload) ? readByIdResult.payload : null,
+      };
+    }
+    if (Number(readByIdResult.status) !== 404) {
+      return readByIdResult;
+    }
+  }
+
   const existingFileResult = await findDriveFileByNameInFolder({
     accessToken,
     folderId,
@@ -1419,6 +1451,7 @@ function extractBootstrapBundleFromPersistedConfig(rawConfigPayload) {
           : undefined;
       const rawDataFile = typeof rawCalendar["data-file"] === "string" ? rawCalendar["data-file"].trim() : "";
       const dataFile = rawDataFile || `${currentAccountId}_${calendarId}.json`;
+      const dataFileId = normalizeDriveFileId(rawCalendar["data-file-id"] || rawCalendar.dataFileId);
 
       return {
         id: calendarId,
@@ -1428,6 +1461,7 @@ function extractBootstrapBundleFromPersistedConfig(rawConfigPayload) {
         pinned: calendarPinned,
         ...(calendarDisplay ? { display: calendarDisplay } : {}),
         dataFile,
+        ...(dataFileId ? { dataFileId } : {}),
         data: {},
       };
     })
@@ -1616,20 +1650,75 @@ async function loadJustCalendarDataFiles({
     };
   }
 
-  const dayStatesByCalendarId = {};
-  for (const calendar of calendars) {
+  const targetCalendars = Array.isArray(calendars) ? calendars : [];
+  const calendarLoadTasks = targetCalendars.map((calendar) => async () => {
     if (!isObjectRecord(calendar)) {
-      continue;
+      return {
+        ok: true,
+        calendarId: "",
+        dayEntries: {},
+        resolvedFileId: "",
+      };
     }
+
     const calendarId = normalizeIncomingCalendarId(calendar.id);
     if (!calendarId) {
-      continue;
+      return {
+        ok: true,
+        calendarId: "",
+        dayEntries: {},
+        resolvedFileId: "",
+      };
     }
-    dayStatesByCalendarId[calendarId] = {};
 
     const fileName = typeof calendar.dataFile === "string" ? calendar.dataFile.trim() : "";
+    const configuredFileId = normalizeDriveFileId(
+      calendar["data-file-id"] || calendar.dataFileId,
+    );
+
+    const parseCalendarEntries = (readPayload) => {
+      const payloadObject = isObjectRecord(readPayload) ? readPayload : {};
+      const fileCalendarType = normalizeBootstrapCalendarType(
+        payloadObject["calendar-type"] || calendar.type,
+      );
+      return normalizeBootstrapCalendarDayEntries(payloadObject.data, fileCalendarType);
+    };
+
+    if (configuredFileId) {
+      const readByIdResult = await readDriveJsonFileById({
+        accessToken,
+        fileId: configuredFileId,
+      });
+      if (readByIdResult.ok) {
+        return {
+          ok: true,
+          calendarId,
+          dayEntries: parseCalendarEntries(readByIdResult.payload),
+          resolvedFileId: configuredFileId,
+        };
+      }
+
+      if (Number(readByIdResult.status) !== 404) {
+        return {
+          ok: false,
+          error: "calendar_data_load_read_failed",
+          status: readByIdResult.status || 502,
+          details: {
+            fileName,
+            fileId: configuredFileId,
+            cause: readByIdResult.details || readByIdResult.error || "unknown_error",
+          },
+        };
+      }
+    }
+
     if (!fileName) {
-      continue;
+      return {
+        ok: true,
+        calendarId,
+        dayEntries: {},
+        resolvedFileId: "",
+      };
     }
 
     const lookupResult = await findDriveFileByNameInFolder({
@@ -1649,7 +1738,12 @@ async function loadJustCalendarDataFiles({
       };
     }
     if (!lookupResult.found || !lookupResult.fileId) {
-      continue;
+      return {
+        ok: true,
+        calendarId,
+        dayEntries: {},
+        resolvedFileId: "",
+      };
     }
 
     const readResult = await readDriveJsonFileById({
@@ -1663,24 +1757,163 @@ async function loadJustCalendarDataFiles({
         status: readResult.status || 502,
         details: {
           fileName,
+          fileId: lookupResult.fileId,
           cause: readResult.details || readResult.error || "unknown_error",
         },
       };
     }
 
-    const payloadObject = isObjectRecord(readResult.payload) ? readResult.payload : {};
-    const fileCalendarType = normalizeBootstrapCalendarType(
-      payloadObject["calendar-type"] || calendar.type,
-    );
-    dayStatesByCalendarId[calendarId] = normalizeBootstrapCalendarDayEntries(
-      payloadObject.data,
-      fileCalendarType,
-    );
+    return {
+      ok: true,
+      calendarId,
+      dayEntries: parseCalendarEntries(readResult.payload),
+      resolvedFileId: lookupResult.fileId,
+    };
+  });
+
+  const dayStatesByCalendarId = {};
+  const resolvedFileIdsByCalendarId = {};
+  const concurrentTaskCount = Math.max(
+    1,
+    Math.min(
+      DRIVE_DATA_LOAD_CONCURRENCY,
+      Number.isFinite(targetCalendars.length) ? targetCalendars.length : DRIVE_DATA_LOAD_CONCURRENCY,
+    ),
+  );
+  let nextTaskIndex = 0;
+  const workerResults = [];
+
+  const runNextTask = async () => {
+    while (nextTaskIndex < calendarLoadTasks.length) {
+      const taskIndex = nextTaskIndex;
+      nextTaskIndex += 1;
+      const taskResult = await calendarLoadTasks[taskIndex]();
+      workerResults[taskIndex] = taskResult;
+      if (!taskResult?.ok) {
+        return;
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: concurrentTaskCount }, () => runNextTask()));
+
+  for (const taskResult of workerResults) {
+    if (!taskResult || !taskResult.ok) {
+      return taskResult || {
+        ok: false,
+        error: "calendar_data_load_failed",
+        status: 502,
+      };
+    }
+    const calendarId = normalizeIncomingCalendarId(taskResult.calendarId);
+    if (!calendarId) {
+      continue;
+    }
+    dayStatesByCalendarId[calendarId] = isObjectRecord(taskResult.dayEntries)
+      ? taskResult.dayEntries
+      : {};
+    const resolvedFileId = normalizeDriveFileId(taskResult.resolvedFileId);
+    if (resolvedFileId) {
+      resolvedFileIdsByCalendarId[calendarId] = resolvedFileId;
+    }
   }
 
   return {
     ok: true,
     dayStatesByCalendarId,
+    resolvedFileIdsByCalendarId,
+  };
+}
+
+function injectDataFileIdsIntoConfigPayload(
+  rawConfigPayload,
+  { accountId = "", resolvedFileIdsByCalendarId = {} } = {},
+) {
+  if (!isObjectRecord(rawConfigPayload) || !isObjectRecord(rawConfigPayload.accounts)) {
+    return {
+      updated: false,
+      payload: rawConfigPayload,
+    };
+  }
+
+  const resolvedFileIds =
+    isObjectRecord(resolvedFileIdsByCalendarId) ? resolvedFileIdsByCalendarId : {};
+  if (Object.keys(resolvedFileIds).length === 0) {
+    return {
+      updated: false,
+      payload: rawConfigPayload,
+    };
+  }
+
+  const normalizedAccountId =
+    normalizeIncomingAccountId(accountId) ||
+    normalizeIncomingAccountId(rawConfigPayload["current-account-id"]) ||
+    "";
+  if (!normalizedAccountId) {
+    return {
+      updated: false,
+      payload: rawConfigPayload,
+    };
+  }
+
+  const accounts = rawConfigPayload.accounts;
+  const currentAccountRecord = isObjectRecord(accounts[normalizedAccountId])
+    ? accounts[normalizedAccountId]
+    : null;
+  if (!currentAccountRecord || !Array.isArray(currentAccountRecord.calendars)) {
+    return {
+      updated: false,
+      payload: rawConfigPayload,
+    };
+  }
+
+  let updated = false;
+  const nextCalendars = currentAccountRecord.calendars.map((rawCalendar) => {
+    if (!isObjectRecord(rawCalendar)) {
+      return rawCalendar;
+    }
+
+    const calendarId = normalizeIncomingCalendarId(rawCalendar.id);
+    if (!calendarId) {
+      return rawCalendar;
+    }
+    const resolvedFileId = normalizeDriveFileId(resolvedFileIds[calendarId]);
+    if (!resolvedFileId) {
+      return rawCalendar;
+    }
+    const existingFileId = normalizeDriveFileId(
+      rawCalendar["data-file-id"] || rawCalendar.dataFileId,
+    );
+    if (existingFileId === resolvedFileId) {
+      return rawCalendar;
+    }
+
+    updated = true;
+    return {
+      ...rawCalendar,
+      "data-file-id": resolvedFileId,
+    };
+  });
+
+  if (!updated) {
+    return {
+      updated: false,
+      payload: rawConfigPayload,
+    };
+  }
+
+  return {
+    updated: true,
+    payload: {
+      ...rawConfigPayload,
+      accounts: {
+        ...accounts,
+        [normalizedAccountId]: {
+          ...currentAccountRecord,
+          calendars: nextCalendars,
+        },
+      },
+    },
   };
 }
 
@@ -1780,6 +2013,7 @@ async function ensureJustCalendarConfigForCurrentConnection({
       folderId,
       configPayload: requestedBootstrapBundle.configPayload,
       allowCreateIfMissing,
+      preferredFileId: freshState.configFileId || "",
     });
     if (!configFileResult.ok) {
       return configFileResult;
@@ -1789,8 +2023,13 @@ async function ensureJustCalendarConfigForCurrentConnection({
       configFileResult && typeof configFileResult.fileId === "string" ? configFileResult.fileId : "";
 
     let effectiveBootstrapBundle = null;
+    let effectiveConfigPayload = null;
     if (configFileResult.created) {
       effectiveBootstrapBundle = requestedBootstrapBundle;
+      effectiveConfigPayload = requestedBootstrapBundle.configPayload;
+    } else if (isObjectRecord(configFileResult.payload)) {
+      effectiveBootstrapBundle = extractBootstrapBundleFromPersistedConfig(configFileResult.payload);
+      effectiveConfigPayload = configFileResult.payload;
     } else if (configFileId) {
       const readConfigResult = await readDriveJsonFileById({
         accessToken: tokenToUse,
@@ -1801,6 +2040,7 @@ async function ensureJustCalendarConfigForCurrentConnection({
       }
 
       effectiveBootstrapBundle = extractBootstrapBundleFromPersistedConfig(readConfigResult.payload);
+      effectiveConfigPayload = readConfigResult.payload;
     }
 
     if (!effectiveBootstrapBundle) {
@@ -1856,6 +2096,7 @@ async function ensureJustCalendarConfigForCurrentConnection({
             ? { display: normalizeBootstrapScoreDisplay(calendar.display) }
             : {}),
           "data-file": calendar.dataFile,
+          ...(calendar.dataFileId ? { "data-file-id": normalizeDriveFileId(calendar.dataFileId) } : {}),
         }))
       : [];
 
@@ -1869,6 +2110,7 @@ async function ensureJustCalendarConfigForCurrentConnection({
               name: calendar.name,
               type: calendar.type,
               dataFile: calendar["data-file"],
+              dataFileId: calendar["data-file-id"],
             })),
           })
         : {
@@ -1879,15 +2121,47 @@ async function ensureJustCalendarConfigForCurrentConnection({
       return remoteLoadResult;
     }
 
+    const resolvedCalendarFileIds = isObjectRecord(remoteLoadResult.resolvedFileIdsByCalendarId)
+      ? remoteLoadResult.resolvedFileIdsByCalendarId
+      : {};
+    const responseCalendarsWithResolvedFileIds = responseCalendars.map((calendar) => {
+      if (!isObjectRecord(calendar)) {
+        return calendar;
+      }
+      const calendarId = normalizeIncomingCalendarId(calendar.id);
+      const resolvedFileId = normalizeDriveFileId(
+        calendarId ? resolvedCalendarFileIds[calendarId] : "",
+      );
+      if (!resolvedFileId) {
+        return calendar;
+      }
+      return {
+        ...calendar,
+        "data-file-id": resolvedFileId,
+      };
+    });
+
+    const configFileIdInjection = injectDataFileIdsIntoConfigPayload(effectiveConfigPayload, {
+      accountId: responseBundle?.accountId || "",
+      resolvedFileIdsByCalendarId: resolvedCalendarFileIds,
+    });
+    if (configFileIdInjection.updated && configFileId) {
+      await updateDriveJsonFileById({
+        accessToken: tokenToUse,
+        fileId: configFileId,
+        payload: configFileIdInjection.payload,
+      });
+    }
+
     const firstCalendarId =
-      Array.isArray(responseCalendars) && responseCalendars.length > 0
-        ? responseCalendars[0].id || ""
+      Array.isArray(responseCalendarsWithResolvedFileIds) && responseCalendarsWithResolvedFileIds.length > 0
+        ? responseCalendarsWithResolvedFileIds[0].id || ""
         : "";
     const requestedCurrentCalendarId = normalizeIncomingCalendarId(responseBundle?.currentCalendarId);
     const selectedTheme = normalizeBootstrapTheme(responseBundle?.selectedTheme);
     const activeCalendarId =
       requestedCurrentCalendarId &&
-      responseCalendars.some((calendar) => calendar.id === requestedCurrentCalendarId)
+      responseCalendarsWithResolvedFileIds.some((calendar) => calendar.id === requestedCurrentCalendarId)
         ? requestedCurrentCalendarId
         : firstCalendarId;
     const remoteState =
@@ -1896,7 +2170,7 @@ async function ensureJustCalendarConfigForCurrentConnection({
             version: 1,
             activeCalendarId,
             selectedTheme,
-            calendars: responseCalendars,
+            calendars: responseCalendarsWithResolvedFileIds,
             dayStatesByCalendarId: isObjectRecord(remoteLoadResult.dayStatesByCalendarId)
               ? remoteLoadResult.dayStatesByCalendarId
               : {},
@@ -1913,7 +2187,7 @@ async function ensureJustCalendarConfigForCurrentConnection({
       account: responseBundle?.accountName || DEFAULT_BOOTSTRAP_ACCOUNT_NAME,
       currentCalendarId: activeCalendarId,
       selectedTheme,
-      calendars: responseCalendars,
+      calendars: responseCalendarsWithResolvedFileIds,
       remoteState,
       dataFilesCreated: Number(dataFilesResult.createdCount) || 0,
       dataFiles: Array.isArray(dataFilesResult.files) ? dataFilesResult.files : [],
@@ -1986,11 +2260,13 @@ async function saveJustCalendarStateForCurrentConnection({
   }
 
   const dataFileResults = [];
+  const resolvedFileIdsByCalendarId = {};
   for (const calendar of requestedBootstrapBundle.calendars) {
     if (!isObjectRecord(calendar)) {
       continue;
     }
 
+    const calendarId = normalizeIncomingCalendarId(calendar.id);
     const fileName = typeof calendar.dataFile === "string" ? calendar.dataFile.trim() : "";
     if (!fileName) {
       continue;
@@ -2019,10 +2295,38 @@ async function saveJustCalendarStateForCurrentConnection({
     }
 
     dataFileResults.push({
+      calendarId,
       fileName,
       fileId: upsertDataFileResult.fileId || "",
       created: Boolean(upsertDataFileResult.created),
     });
+    const resolvedFileId = normalizeDriveFileId(upsertDataFileResult.fileId);
+    if (calendarId && resolvedFileId) {
+      resolvedFileIdsByCalendarId[calendarId] = resolvedFileId;
+    }
+  }
+
+  const configFileIdInjection = injectDataFileIdsIntoConfigPayload(
+    requestedBootstrapBundle.configPayload,
+    {
+      accountId: requestedBootstrapBundle.accountId || "",
+      resolvedFileIdsByCalendarId,
+    },
+  );
+  if (configFileIdInjection.updated && upsertConfigResult.fileId) {
+    const updateConfigResult = await updateDriveJsonFileById({
+      accessToken,
+      fileId: upsertConfigResult.fileId,
+      payload: configFileIdInjection.payload,
+    });
+    if (!updateConfigResult.ok) {
+      return {
+        ok: false,
+        error: "config_file_id_update_failed",
+        status: updateConfigResult.status || 502,
+        details: updateConfigResult.details || updateConfigResult.error || "unknown_error",
+      };
+    }
   }
 
   const latestState = readStoredAuthState();
@@ -2033,6 +2337,9 @@ async function saveJustCalendarStateForCurrentConnection({
     updatedAt: new Date().toISOString(),
   });
 
+  const dataFileIdByName = new Map(
+    dataFileResults.map((dataFileResult) => [dataFileResult.fileName, dataFileResult.fileId || ""]),
+  );
   const responseCalendars = requestedBootstrapBundle.calendars.map((calendar) => ({
     id: calendar.id,
     name: calendar.name,
@@ -2043,6 +2350,14 @@ async function saveJustCalendarStateForCurrentConnection({
       ? { display: normalizeBootstrapScoreDisplay(calendar.display) }
       : {}),
     "data-file": calendar.dataFile,
+    ...(() => {
+      const calendarId = normalizeIncomingCalendarId(calendar.id);
+      const resolvedDataFileId = normalizeDriveFileId(
+        (calendarId ? resolvedFileIdsByCalendarId[calendarId] : "") ||
+        dataFileIdByName.get(calendar.dataFile) || calendar.dataFileId,
+      );
+      return resolvedDataFileId ? { "data-file-id": resolvedDataFileId } : {};
+    })(),
   }));
   const firstCalendarId = responseCalendars.length > 0 ? responseCalendars[0].id || "" : "";
   const requestedCurrentCalendarId = normalizeIncomingCalendarId(
@@ -2273,6 +2588,7 @@ async function saveCurrentCalendarStateForCurrentConnection({
           }
         : {}),
       "data-file": fileName,
+      ...(upsertDataFileResult.fileId ? { "data-file-id": upsertDataFileResult.fileId } : {}),
     },
   };
 }
@@ -2308,37 +2624,58 @@ async function loadJustCalendarStateForCurrentConnection({ accessToken = "", con
     };
   }
 
-  const configLookupResult = await findDriveFileByNameInFolder({
-    accessToken,
-    folderId,
-    fileName: JUSTCALENDAR_CONFIG_FILE_NAME,
-  });
-  if (!configLookupResult.ok) {
-    return {
-      ok: false,
-      error: "config_lookup_failed",
-      status: configLookupResult.status || 502,
-      details: configLookupResult.details || configLookupResult.error || "unknown_error",
-    };
+  let resolvedConfigFileId = normalizeDriveFileId(storedState.configFileId);
+  let readConfigResult = null;
+
+  if (resolvedConfigFileId) {
+    const readByStoredIdResult = await readDriveJsonFileById({
+      accessToken,
+      fileId: resolvedConfigFileId,
+    });
+    if (readByStoredIdResult.ok) {
+      readConfigResult = readByStoredIdResult;
+    } else if (Number(readByStoredIdResult.status) !== 404) {
+      return readByStoredIdResult;
+    } else {
+      resolvedConfigFileId = "";
+    }
   }
 
-  if (!configLookupResult.found || !configLookupResult.fileId) {
-    return {
-      ok: true,
-      missing: true,
+  if (!readConfigResult) {
+    const configLookupResult = await findDriveFileByNameInFolder({
+      accessToken,
       folderId,
-      fileId: "",
-      remoteState: null,
-      dataFilesLoaded: 0,
-    };
-  }
+      fileName: JUSTCALENDAR_CONFIG_FILE_NAME,
+    });
+    if (!configLookupResult.ok) {
+      return {
+        ok: false,
+        error: "config_lookup_failed",
+        status: configLookupResult.status || 502,
+        details: configLookupResult.details || configLookupResult.error || "unknown_error",
+      };
+    }
 
-  const readConfigResult = await readDriveJsonFileById({
-    accessToken,
-    fileId: configLookupResult.fileId,
-  });
-  if (!readConfigResult.ok) {
-    return readConfigResult;
+    if (!configLookupResult.found || !configLookupResult.fileId) {
+      return {
+        ok: true,
+        missing: true,
+        folderId,
+        fileId: "",
+        remoteState: null,
+        dataFilesLoaded: 0,
+      };
+    }
+
+    resolvedConfigFileId = configLookupResult.fileId;
+    const readByLookupResult = await readDriveJsonFileById({
+      accessToken,
+      fileId: resolvedConfigFileId,
+    });
+    if (!readByLookupResult.ok) {
+      return readByLookupResult;
+    }
+    readConfigResult = readByLookupResult;
   }
 
   const extractedBootstrapBundle = extractBootstrapBundleFromPersistedConfig(readConfigResult.payload);
@@ -2363,6 +2700,7 @@ async function loadJustCalendarStateForCurrentConnection({ accessToken = "", con
       ? { display: normalizeBootstrapScoreDisplay(calendar.display) }
       : {}),
     "data-file": calendar.dataFile,
+    ...(calendar.dataFileId ? { "data-file-id": normalizeDriveFileId(calendar.dataFileId) } : {}),
   }));
 
   const remoteLoadResult = await loadJustCalendarDataFiles({
@@ -2373,10 +2711,49 @@ async function loadJustCalendarStateForCurrentConnection({ accessToken = "", con
       name: calendar.name,
       type: calendar.type,
       dataFile: calendar["data-file"],
+      dataFileId: calendar["data-file-id"],
     })),
   });
   if (!remoteLoadResult.ok) {
     return remoteLoadResult;
+  }
+
+  const resolvedCalendarFileIds = isObjectRecord(remoteLoadResult.resolvedFileIdsByCalendarId)
+    ? remoteLoadResult.resolvedFileIdsByCalendarId
+    : {};
+  const withResolvedFileIdCalendars = responseCalendars.map((calendar) => {
+    if (!isObjectRecord(calendar)) {
+      return calendar;
+    }
+    const calendarId = normalizeIncomingCalendarId(calendar.id);
+    const resolvedFileId = normalizeDriveFileId(
+      calendarId ? resolvedCalendarFileIds[calendarId] : "",
+    );
+    if (!resolvedFileId) {
+      return calendar;
+    }
+    return {
+      ...calendar,
+      "data-file-id": resolvedFileId,
+    };
+  });
+
+  const configFileIdInjection = injectDataFileIdsIntoConfigPayload(readConfigResult.payload, {
+    accountId: extractedBootstrapBundle.accountId,
+    resolvedFileIdsByCalendarId: resolvedCalendarFileIds,
+  });
+  if (configFileIdInjection.updated && resolvedConfigFileId) {
+    const updateConfigFileResult = await updateDriveJsonFileById({
+      accessToken,
+      fileId: resolvedConfigFileId,
+      payload: configFileIdInjection.payload,
+    });
+    if (updateConfigFileResult.ok) {
+      readConfigResult = {
+        ...readConfigResult,
+        payload: configFileIdInjection.payload,
+      };
+    }
   }
 
   const firstCalendarId = responseCalendars.length > 0 ? responseCalendars[0].id || "" : "";
@@ -2394,7 +2771,7 @@ async function loadJustCalendarStateForCurrentConnection({ accessToken = "", con
   writeStoredAuthState({
     ...latestState,
     driveFolderId: folderId || latestState.driveFolderId || "",
-    configFileId: configLookupResult.fileId || latestState.configFileId || "",
+    configFileId: resolvedConfigFileId || latestState.configFileId || "",
     updatedAt: new Date().toISOString(),
   });
 
@@ -2402,22 +2779,22 @@ async function loadJustCalendarStateForCurrentConnection({ accessToken = "", con
     ok: true,
     missing: false,
     folderId,
-    fileId: configLookupResult.fileId || "",
+    fileId: resolvedConfigFileId || "",
     accountId: extractedBootstrapBundle.accountId || "",
     account: extractedBootstrapBundle.accountName || DEFAULT_BOOTSTRAP_ACCOUNT_NAME,
     currentCalendarId: activeCalendarId,
     selectedTheme,
-    calendars: responseCalendars,
+    calendars: withResolvedFileIdCalendars,
     remoteState: {
       version: 1,
       activeCalendarId,
       selectedTheme,
-      calendars: responseCalendars,
+      calendars: withResolvedFileIdCalendars,
       dayStatesByCalendarId: isObjectRecord(remoteLoadResult.dayStatesByCalendarId)
         ? remoteLoadResult.dayStatesByCalendarId
         : {},
     },
-    dataFilesLoaded: responseCalendars.length,
+    dataFilesLoaded: withResolvedFileIdCalendars.length,
   };
 }
 
@@ -3143,6 +3520,7 @@ function createGoogleAuthPlugin(config) {
               ? { display: normalizeBootstrapScoreDisplay(calendar.display) }
               : {}),
             "data-file": calendar.dataFile,
+            ...(calendar.dataFileId ? { "data-file-id": normalizeDriveFileId(calendar.dataFileId) } : {}),
           })),
       remoteState: isObjectRecord(ensureConfigResult.remoteState)
         ? ensureConfigResult.remoteState
@@ -3237,6 +3615,7 @@ function createGoogleAuthPlugin(config) {
               ? { display: normalizeBootstrapScoreDisplay(calendar.display) }
               : {}),
             "data-file": calendar.dataFile,
+            ...(calendar.dataFileId ? { "data-file-id": normalizeDriveFileId(calendar.dataFileId) } : {}),
           })),
       remoteState: isObjectRecord(saveResult.remoteState) ? saveResult.remoteState : null,
       dataFilesSaved: Number(saveResult.dataFilesSaved) || 0,
