@@ -1265,6 +1265,14 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
   let hasBootstrappedDriveConfig = false;
   let bootstrapDriveConfigPromise = null;
   let driveBusyCount = 0;
+  let cachedDriveAccessToken = "";
+  let cachedDriveAccessTokenExpiresAt = 0;
+  let cachedDriveFolderId = "";
+  let cachedDriveConfigFileId = "";
+  let cachedDriveAccountId = readStoredDriveAccountId();
+  const cachedDriveCalendarConfigById = new Map();
+  const cachedDriveCalendarFileMetaById = new Map();
+  const cachedDriveFileIdByName = new Map();
 
   const logGoogleAuthMessage = (level, message, details) => {
     const logger = typeof console[level] === "function" ? console[level] : console.log;
@@ -1431,7 +1439,196 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
       return "";
     }
     persistDriveAccountId(accountId);
+    cachedDriveAccountId = accountId;
     return accountId;
+  };
+
+  const clearDriveRuntimeCache = ({ keepAccountId = false } = {}) => {
+    cachedDriveAccessToken = "";
+    cachedDriveAccessTokenExpiresAt = 0;
+    cachedDriveFolderId = "";
+    cachedDriveConfigFileId = "";
+    cachedDriveCalendarConfigById.clear();
+    cachedDriveCalendarFileMetaById.clear();
+    cachedDriveFileIdByName.clear();
+    if (!keepAccountId) {
+      cachedDriveAccountId = "";
+    }
+  };
+
+  const rememberCachedCalendarFileMeta = ({ calendarId = "", fileName = "", fileId = "" } = {}) => {
+    const normalizedCalendarId = String(calendarId ?? "").trim();
+    if (!isValidDriveCalendarId(normalizedCalendarId)) {
+      return;
+    }
+    const normalizedFileName = String(fileName ?? "").trim();
+    const normalizedFileId = String(fileId ?? "").trim();
+    const previousMeta = isObjectLike(cachedDriveCalendarFileMetaById.get(normalizedCalendarId))
+      ? cachedDriveCalendarFileMetaById.get(normalizedCalendarId)
+      : {};
+    const nextMeta = {
+      ...previousMeta,
+      ...(normalizedFileName ? { fileName: normalizedFileName } : {}),
+      ...(normalizedFileId ? { fileId: normalizedFileId } : {}),
+    };
+    cachedDriveCalendarFileMetaById.set(normalizedCalendarId, nextMeta);
+    if (normalizedFileName && normalizedFileId) {
+      cachedDriveFileIdByName.set(normalizedFileName, normalizedFileId);
+    }
+  };
+
+  const clearCachedCalendarFileId = ({ calendarId = "", fileName = "", fileId = "" } = {}) => {
+    const normalizedCalendarId = String(calendarId ?? "").trim();
+    const normalizedFileName = String(fileName ?? "").trim();
+    const normalizedFileId = String(fileId ?? "").trim();
+    if (normalizedCalendarId && cachedDriveCalendarFileMetaById.has(normalizedCalendarId)) {
+      const existingMeta = cachedDriveCalendarFileMetaById.get(normalizedCalendarId);
+      if (
+        isObjectLike(existingMeta) &&
+        typeof existingMeta.fileId === "string" &&
+        existingMeta.fileId.trim() &&
+        (!normalizedFileId || existingMeta.fileId.trim() === normalizedFileId)
+      ) {
+        const nextMeta = { ...existingMeta };
+        delete nextMeta.fileId;
+        if (Object.keys(nextMeta).length === 0) {
+          cachedDriveCalendarFileMetaById.delete(normalizedCalendarId);
+        } else {
+          cachedDriveCalendarFileMetaById.set(normalizedCalendarId, nextMeta);
+        }
+      }
+    }
+    if (normalizedFileName && cachedDriveFileIdByName.has(normalizedFileName)) {
+      const knownFileId = String(cachedDriveFileIdByName.get(normalizedFileName) ?? "").trim();
+      if (!normalizedFileId || knownFileId === normalizedFileId) {
+        cachedDriveFileIdByName.delete(normalizedFileName);
+      }
+    }
+  };
+
+  const getCachedCalendarFileId = ({ calendarId = "", fileName = "" } = {}) => {
+    const normalizedCalendarId = String(calendarId ?? "").trim();
+    if (normalizedCalendarId && cachedDriveCalendarFileMetaById.has(normalizedCalendarId)) {
+      const cachedMeta = cachedDriveCalendarFileMetaById.get(normalizedCalendarId);
+      if (isObjectLike(cachedMeta) && typeof cachedMeta.fileId === "string" && cachedMeta.fileId.trim()) {
+        return cachedMeta.fileId.trim();
+      }
+    }
+    const normalizedFileName = String(fileName ?? "").trim();
+    if (!normalizedFileName) {
+      return "";
+    }
+    const cachedFileId = cachedDriveFileIdByName.get(normalizedFileName);
+    return typeof cachedFileId === "string" ? cachedFileId.trim() : "";
+  };
+
+  const rememberCachedCalendarConfigEntry = (rawCalendar) => {
+    if (!isObjectLike(rawCalendar)) {
+      return;
+    }
+    const calendarId =
+      typeof rawCalendar.id === "string" && rawCalendar.id.trim() ? rawCalendar.id.trim() : "";
+    if (!isValidDriveCalendarId(calendarId)) {
+      return;
+    }
+    const dataFile =
+      typeof rawCalendar["data-file"] === "string" ? rawCalendar["data-file"].trim() : "";
+    const existingEntry = isObjectLike(cachedDriveCalendarConfigById.get(calendarId))
+      ? cachedDriveCalendarConfigById.get(calendarId)
+      : {};
+    cachedDriveCalendarConfigById.set(calendarId, {
+      ...existingEntry,
+      id: calendarId,
+      name: normalizeBootstrapCalendarName(rawCalendar.name, existingEntry.name || "Calendar"),
+      type: normalizeBootstrapCalendarType(rawCalendar.type || existingEntry.type),
+      color: normalizeCalendarColor(rawCalendar.color || existingEntry.color, DEFAULT_CALENDAR_COLOR),
+      pinned:
+        typeof rawCalendar.pinned === "boolean"
+          ? rawCalendar.pinned
+          : Boolean(existingEntry.pinned),
+      ...(normalizeBootstrapCalendarType(rawCalendar.type || existingEntry.type) === CALENDAR_TYPE_SCORE
+        ? {
+            display: normalizeScoreDisplay(rawCalendar.display || existingEntry.display),
+          }
+        : {}),
+      ...(dataFile ? { dataFile } : existingEntry.dataFile ? { dataFile: existingEntry.dataFile } : {}),
+    });
+    if (dataFile) {
+      rememberCachedCalendarFileMeta({ calendarId, fileName: dataFile });
+    }
+  };
+
+  const syncDriveRuntimeCacheFromPayload = (payload) => {
+    if (!isObjectLike(payload)) {
+      return;
+    }
+    syncStoredDriveAccountIdFromPayload(payload);
+
+    const folderId = typeof payload.folderId === "string" ? payload.folderId.trim() : "";
+    if (folderId) {
+      cachedDriveFolderId = folderId;
+    }
+
+    const fileName = typeof payload.fileName === "string" ? payload.fileName.trim() : "";
+    const fileId = typeof payload.fileId === "string" ? payload.fileId.trim() : "";
+    if (fileName === JUSTCALENDAR_CONFIG_FILE_NAME && fileId) {
+      cachedDriveConfigFileId = fileId;
+    }
+
+    const payloadCalendars = Array.isArray(payload.calendars) ? payload.calendars : [];
+    payloadCalendars.forEach((rawCalendar) => {
+      rememberCachedCalendarConfigEntry(rawCalendar);
+    });
+
+    if (isObjectLike(payload.calendar)) {
+      rememberCachedCalendarConfigEntry(payload.calendar);
+      const calendarId =
+        typeof payload.calendar.id === "string" ? payload.calendar.id.trim() : "";
+      const calendarDataFile =
+        typeof payload.calendar["data-file"] === "string"
+          ? payload.calendar["data-file"].trim()
+          : fileName !== JUSTCALENDAR_CONFIG_FILE_NAME
+            ? fileName
+            : "";
+      if (calendarId && (calendarDataFile || fileId)) {
+        rememberCachedCalendarFileMeta({
+          calendarId,
+          fileName: calendarDataFile,
+          fileId,
+        });
+      }
+    }
+
+    if (Array.isArray(payload.dataFiles)) {
+      payload.dataFiles.forEach((rawDataFile) => {
+        if (!isObjectLike(rawDataFile)) {
+          return;
+        }
+        const calendarId =
+          typeof rawDataFile.calendarId === "string" ? rawDataFile.calendarId.trim() : "";
+        const dataFileName =
+          typeof rawDataFile.fileName === "string" ? rawDataFile.fileName.trim() : "";
+        const dataFileId =
+          typeof rawDataFile.fileId === "string" ? rawDataFile.fileId.trim() : "";
+        if (calendarId || dataFileName || dataFileId) {
+          rememberCachedCalendarFileMeta({
+            calendarId,
+            fileName: dataFileName,
+            fileId: dataFileId,
+          });
+        }
+      });
+    }
+
+    const currentCalendarId =
+      typeof payload.currentCalendarId === "string" ? payload.currentCalendarId.trim() : "";
+    if (fileName && fileName !== JUSTCALENDAR_CONFIG_FILE_NAME && (currentCalendarId || fileId)) {
+      rememberCachedCalendarFileMeta({
+        calendarId: currentCalendarId,
+        fileName,
+        fileId,
+      });
+    }
   };
 
   const reorderGoogleDriveOption = (connected) => {
@@ -1868,7 +2065,23 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     return flatDayEntries;
   };
 
-  const requestGoogleAccessTokenFromBackend = async () => {
+  const requestGoogleAccessTokenFromBackend = async ({ forceRefresh = false } = {}) => {
+    if (
+      !forceRefresh &&
+      cachedDriveAccessToken &&
+      Number.isFinite(cachedDriveAccessTokenExpiresAt) &&
+      cachedDriveAccessTokenExpiresAt > Date.now() + 30_000
+    ) {
+      return {
+        ok: true,
+        accessToken: cachedDriveAccessToken,
+        payload: {
+          cached: true,
+          expiresAt: cachedDriveAccessTokenExpiresAt,
+        },
+      };
+    }
+
     const response = await backendFetch("/api/auth/google/access-token", {
       method: "POST",
       headers: {
@@ -1886,6 +2099,13 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
         payload,
       };
     }
+    const expiresAtRaw = Number(payload?.expiresAt);
+    const expiresAt =
+      Number.isFinite(expiresAtRaw) && expiresAtRaw > Date.now()
+        ? expiresAtRaw
+        : Date.now() + 45 * 60_000;
+    cachedDriveAccessToken = accessToken;
+    cachedDriveAccessTokenExpiresAt = expiresAt;
     return {
       ok: true,
       accessToken,
@@ -1970,6 +2190,14 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
   };
 
   const ensureDriveFolderFromBrowser = async (accessToken) => {
+    if (cachedDriveFolderId) {
+      return {
+        ok: true,
+        created: false,
+        folderId: cachedDriveFolderId,
+      };
+    }
+
     const escapedFolderName = escapeDriveQueryValue(JUSTCALENDAR_DRIVE_FOLDER_NAME);
     const listUrl = new URL(GOOGLE_DRIVE_FILES_API_URL);
     listUrl.searchParams.set(
@@ -1999,10 +2227,11 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
         ? lookupResult.payload.files[0]
         : null;
     if (firstFolder && typeof firstFolder.id === "string" && firstFolder.id.trim()) {
+      cachedDriveFolderId = firstFolder.id.trim();
       return {
         ok: true,
         created: false,
-        folderId: firstFolder.id.trim(),
+        folderId: cachedDriveFolderId,
       };
     }
 
@@ -2041,6 +2270,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
       };
     }
 
+    cachedDriveFolderId = folderId;
     return {
       ok: true,
       created: true,
@@ -2683,6 +2913,10 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
   };
 
   const saveCurrentCalendarStateFromBrowser = async () => {
+    if (cachedDriveAccountId && isValidDriveAccountId(cachedDriveAccountId)) {
+      persistDriveAccountId(cachedDriveAccountId);
+    }
+
     const accessTokenResult = await requestGoogleAccessTokenFromBackend();
     if (!accessTokenResult.ok) {
       return {
@@ -2702,59 +2936,14 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
       };
     }
     const folderId = folderResult.folderId || "";
-
-    const configLookupResult = await findDriveFileByNameInFolderFromBrowser({
-      accessToken,
-      folderId,
-      fileName: JUSTCALENDAR_CONFIG_FILE_NAME,
-    });
-    if (!configLookupResult.ok) {
-      return {
-        ok: false,
-        phase: "config_lookup",
-        ...configLookupResult,
-      };
-    }
-    if (!configLookupResult.found || !configLookupResult.fileId) {
-      return {
-        ok: false,
-        phase: "config_missing",
-        status: 404,
-        error: "missing_config",
-        details: {
-          message: "justcalendar.json was not found in Google Drive.",
-        },
-      };
-    }
-
-    const readConfigResult = await readDriveJsonFileByIdFromBrowser({
-      accessToken,
-      fileId: configLookupResult.fileId,
-    });
-    if (!readConfigResult.ok) {
-      return {
-        ok: false,
-        phase: "config_read",
-        ...readConfigResult,
-      };
-    }
-
-    const accountEntry = extractCurrentAccountFromDriveConfig(readConfigResult.payload);
-    if (!accountEntry) {
-      return {
-        ok: false,
-        phase: "config_parse",
-        status: 422,
-        error: "missing_account_in_config",
-        details: {
-          message: "justcalendar.json is missing account structure.",
-        },
-      };
-    }
-    const accountId = accountEntry.accountId;
-    const accountRecord = accountEntry.accountRecord;
+    const accountIdFromCache =
+      cachedDriveAccountId && isValidDriveAccountId(cachedDriveAccountId) ? cachedDriveAccountId : "";
 
     const bootstrapPayload = buildDriveBootstrapPayload();
+    const accountId =
+      accountIdFromCache ||
+      (typeof bootstrapPayload.currentAccountId === "string" ? bootstrapPayload.currentAccountId.trim() : "") ||
+      getOrCreateDriveAccountId();
     const persistedBundle = buildDrivePersistedFilesFromBootstrap(bootstrapPayload);
     const currentCalendarId = persistedBundle.currentCalendarId;
     const currentCalendar = persistedBundle.calendars.find(
@@ -2774,98 +2963,182 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
         },
       };
     }
-
-    const configCalendars = Array.isArray(accountRecord.calendars) ? accountRecord.calendars : [];
     const currentCalendarName = normalizeBootstrapCalendarName(currentCalendar.name, "Calendar");
-    const persistedConfigCalendar = configCalendars.find((rawCalendar) => {
-      if (!isObjectLike(rawCalendar)) {
-        return false;
-      }
-      const configCalendarId =
-        typeof rawCalendar.id === "string" ? rawCalendar.id.trim() : "";
-      if (configCalendarId && configCalendarId === currentCalendarId) {
-        return true;
-      }
-      const configCalendarName = normalizeBootstrapCalendarName(rawCalendar.name, "");
-      return Boolean(configCalendarName) && configCalendarName === currentCalendarName;
-    });
-
-    if (!persistedConfigCalendar || !isObjectLike(persistedConfigCalendar)) {
-      return {
-        ok: false,
-        phase: "config_calendar_lookup",
-        status: 404,
-        error: "current_calendar_not_found_in_config",
-        details: {
-          message: "Current calendar was not found in justcalendar.json.",
-          currentCalendarId,
-          currentCalendarName,
-        },
-      };
-    }
-
+    const cachedCalendarConfig = isObjectLike(cachedDriveCalendarConfigById.get(currentCalendarId))
+      ? cachedDriveCalendarConfigById.get(currentCalendarId)
+      : {};
     const persistedConfigCalendarId =
-      typeof persistedConfigCalendar.id === "string" && persistedConfigCalendar.id.trim()
-        ? persistedConfigCalendar.id.trim()
+      typeof cachedCalendarConfig.id === "string" && cachedCalendarConfig.id.trim()
+        ? cachedCalendarConfig.id.trim()
         : currentCalendarId;
     const persistedConfigCalendarType = normalizeBootstrapCalendarType(
-      persistedConfigCalendar.type || currentCalendar.type,
+      cachedCalendarConfig.type || currentCalendar.type,
     );
     const dataFile =
-      typeof persistedConfigCalendar["data-file"] === "string"
-        ? persistedConfigCalendar["data-file"].trim()
+      typeof cachedCalendarConfig.dataFile === "string"
+        ? cachedCalendarConfig.dataFile.trim()
         : "";
-    const targetFileName = dataFile || `${accountId}_${persistedConfigCalendarId}.json`;
+    const fallbackFileName =
+      typeof currentCalendar.dataFile === "string" && currentCalendar.dataFile.trim()
+        ? currentCalendar.dataFile.trim()
+        : `${accountId}_${persistedConfigCalendarId}.json`;
+    const targetFileName = dataFile || fallbackFileName;
+    const targetPayload = {
+      version: 1,
+      "account-id": accountId,
+      "calendar-id": persistedConfigCalendarId,
+      "calendar-name": normalizeBootstrapCalendarName(
+        cachedCalendarConfig.name || currentCalendar.name,
+        currentCalendarName,
+      ),
+      "calendar-type": persistedConfigCalendarType,
+      data: currentCalendarDataFile.payload.data,
+    };
 
-    const upsertResult = await upsertDriveJsonFileInFolderFromBrowser({
-      accessToken,
-      folderId,
+    const cachedFileId = getCachedCalendarFileId({
+      calendarId: persistedConfigCalendarId,
       fileName: targetFileName,
-      payload: {
-        version: 1,
-        "account-id": accountId,
-        "calendar-id": persistedConfigCalendarId,
-        "calendar-name": normalizeBootstrapCalendarName(
-          persistedConfigCalendar.name,
-          currentCalendarName,
-        ),
-        "calendar-type": persistedConfigCalendarType,
-        data: currentCalendarDataFile.payload.data,
-      },
     });
-    if (!upsertResult.ok) {
+    let savedFileId = "";
+    let wasCreated = false;
+    let writeSource = "";
+
+    if (cachedFileId) {
+      const cachedUpdateResult = await updateDriveJsonFileByIdFromBrowser({
+        accessToken,
+        fileId: cachedFileId,
+        payload: targetPayload,
+      });
+      if (cachedUpdateResult.ok) {
+        savedFileId = cachedUpdateResult.fileId || cachedFileId;
+        writeSource = "cached_file_id";
+      } else if (Number(cachedUpdateResult.status) === 404) {
+        clearCachedCalendarFileId({
+          calendarId: persistedConfigCalendarId,
+          fileName: targetFileName,
+          fileId: cachedFileId,
+        });
+      } else {
+        return {
+          ok: false,
+          phase: "calendar_data_update_by_cached_file_id",
+          ...cachedUpdateResult,
+        };
+      }
+    }
+
+    if (!savedFileId) {
+      const lookupResult = await findDriveFileByNameInFolderFromBrowser({
+        accessToken,
+        folderId,
+        fileName: targetFileName,
+      });
+      if (!lookupResult.ok) {
+        return {
+          ok: false,
+          phase: "calendar_data_lookup",
+          ...lookupResult,
+        };
+      }
+
+      if (lookupResult.found && lookupResult.fileId) {
+        const updateResult = await updateDriveJsonFileByIdFromBrowser({
+          accessToken,
+          fileId: lookupResult.fileId,
+          payload: targetPayload,
+        });
+        if (!updateResult.ok) {
+          return {
+            ok: false,
+            phase: "calendar_data_update",
+            ...updateResult,
+          };
+        }
+        savedFileId = updateResult.fileId || lookupResult.fileId;
+        writeSource = "lookup_then_update";
+      } else {
+        const createResult = await createDriveJsonFileInFolderFromBrowser({
+          accessToken,
+          folderId,
+          fileName: targetFileName,
+          payload: targetPayload,
+        });
+        if (!createResult.ok) {
+          return {
+            ok: false,
+            phase: "calendar_data_create",
+            ...createResult,
+          };
+        }
+        savedFileId = createResult.fileId || "";
+        wasCreated = true;
+        writeSource = "created";
+      }
+    }
+
+    if (!savedFileId) {
       return {
         ok: false,
-        phase: "calendar_data_upsert",
-        ...upsertResult,
+        phase: "calendar_data_missing_file_id_after_write",
+        status: 502,
+        error: "missing_file_id_after_write",
       };
     }
+
+    rememberCachedCalendarConfigEntry({
+      id: persistedConfigCalendarId,
+      name: normalizeBootstrapCalendarName(
+        cachedCalendarConfig.name || currentCalendar.name,
+        currentCalendarName,
+      ),
+      type: persistedConfigCalendarType,
+      color: normalizeCalendarColor(cachedCalendarConfig.color || currentCalendar.color, DEFAULT_CALENDAR_COLOR),
+      pinned:
+        typeof cachedCalendarConfig.pinned === "boolean"
+          ? cachedCalendarConfig.pinned
+          : Boolean(currentCalendar.pinned),
+      ...(persistedConfigCalendarType === CALENDAR_TYPE_SCORE
+        ? {
+            display: normalizeScoreDisplay(cachedCalendarConfig.display || currentCalendar.display),
+          }
+        : {}),
+      "data-file": targetFileName,
+    });
+    rememberCachedCalendarFileMeta({
+      calendarId: persistedConfigCalendarId,
+      fileName: targetFileName,
+      fileId: savedFileId,
+    });
 
     return {
       ok: true,
       folderId,
-      fileId: upsertResult.fileId || "",
+      fileId: savedFileId,
       fileName: targetFileName,
-      created: Boolean(upsertResult.created),
+      created: wasCreated,
+      writeSource,
       accountId,
-      account: normalizeBootstrapCalendarName(accountRecord.name, "default"),
+      account: normalizeBootstrapCalendarName(bootstrapPayload.currentAccount, "default"),
       currentCalendarId: persistedConfigCalendarId,
       calendar: {
         id: persistedConfigCalendarId,
         name: normalizeBootstrapCalendarName(
-          persistedConfigCalendar.name,
+          cachedCalendarConfig.name || currentCalendar.name,
           currentCalendarName,
         ),
         type: persistedConfigCalendarType,
         color: normalizeCalendarColor(
-          persistedConfigCalendar.color || currentCalendar.color,
+          cachedCalendarConfig.color || currentCalendar.color,
           DEFAULT_CALENDAR_COLOR,
         ),
-        pinned: Boolean(persistedConfigCalendar.pinned),
+        pinned:
+          typeof cachedCalendarConfig.pinned === "boolean"
+            ? cachedCalendarConfig.pinned
+            : Boolean(currentCalendar.pinned),
         ...(persistedConfigCalendarType === CALENDAR_TYPE_SCORE
           ? {
               display: normalizeScoreDisplay(
-                persistedConfigCalendar.display || currentCalendar.display,
+                cachedCalendarConfig.display || currentCalendar.display,
               ),
             }
           : {}),
@@ -3195,7 +3468,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
       return;
     }
 
-    syncStoredDriveAccountIdFromPayload(payload);
+    syncDriveRuntimeCacheFromPayload(payload);
 
     const shouldImportRemoteState =
       payload?.configSource === "existing" && isObjectLike(payload?.remoteState);
@@ -3245,7 +3518,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
       try {
         const directBootstrapResult = await ensureMissingDriveConfigFromBrowser();
         if (directBootstrapResult.ok && directBootstrapResult.handled) {
-          syncStoredDriveAccountIdFromPayload(directBootstrapResult);
+          syncDriveRuntimeCacheFromPayload(directBootstrapResult);
           hasBootstrappedDriveConfig = true;
           logGoogleAuthMessage(
             "info",
@@ -3300,6 +3573,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     reorderGoogleDriveOption(connected);
     if (!connected) {
       hasBootstrappedDriveConfig = false;
+      clearDriveRuntimeCache();
     }
 
     if (!configured) {
@@ -3539,7 +3813,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
               saveResult,
             );
           } else {
-            syncStoredDriveAccountIdFromPayload(saveResult);
+            syncDriveRuntimeCacheFromPayload(saveResult);
             saveOutcome = "success";
             logGoogleAuthMessage(
               "info",
@@ -3612,7 +3886,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
               saveResult,
             );
           } else {
-            syncStoredDriveAccountIdFromPayload(saveResult);
+            syncDriveRuntimeCacheFromPayload(saveResult);
             saveOutcome = "success";
             logGoogleAuthMessage(
               "info",
@@ -3686,14 +3960,14 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
               payload,
             });
           } else if (!isObjectLike(payload?.remoteState)) {
-            syncStoredDriveAccountIdFromPayload(payload);
+            syncDriveRuntimeCacheFromPayload(payload);
             logGoogleAuthMessage(
               "warn",
               "Load completed, but no remote state was found in Google Drive.",
               payload,
             );
           } else {
-            syncStoredDriveAccountIdFromPayload(payload);
+            syncDriveRuntimeCacheFromPayload(payload);
             const importedFromDrive = syncLocalStateFromDrive(payload);
             if (importedFromDrive) {
               hasBootstrappedDriveConfig = true;
@@ -3766,7 +4040,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
               loadResult,
             );
           } else {
-            syncStoredDriveAccountIdFromPayload(loadResult);
+            syncDriveRuntimeCacheFromPayload(loadResult);
             logGoogleAuthMessage(
               "info",
               "Loaded current calendar data from Google Drive.",
