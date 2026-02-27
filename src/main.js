@@ -10,6 +10,11 @@ const headerCalendarsButton = document.getElementById("header-calendars-btn");
 const returnToCurrentButton = document.getElementById("return-to-current");
 const themeToggleButton = document.getElementById("theme-toggle");
 const mobileDebugToggleButton = document.getElementById("mobile-debug-toggle");
+const telegramLogToggleButton = document.getElementById("telegram-log-toggle");
+const telegramLogPanel = document.getElementById("telegram-log-panel");
+const telegramLogPanelBackdrop = document.getElementById("telegram-log-panel-backdrop");
+const telegramLogCloseButton = document.getElementById("telegram-log-close");
+const telegramLogFrame = document.getElementById("telegram-log-frame");
 const monthViewButton = document.getElementById("view-month-btn");
 const yearViewButton = document.getElementById("view-year-btn");
 const calendarViewToggle = document.getElementById("calendar-view-toggle");
@@ -969,12 +974,222 @@ function setupReturnToCurrentButton({ container, button, onReturn }) {
   requestAnimationFrame(updateVisibility);
 }
 
+function setupTelegramLogPanel({ toggleButton, panel, backdrop, closeButton }) {
+  const setOpenState = (isOpen, { focusToggle = false } = {}) => {
+    panel.classList.toggle("is-open", isOpen);
+    backdrop?.classList.toggle("is-open", isOpen);
+    panel.setAttribute("aria-hidden", String(!isOpen));
+    backdrop?.setAttribute("aria-hidden", String(!isOpen));
+    toggleButton.setAttribute("aria-expanded", String(isOpen));
+    toggleButton.setAttribute(
+      "data-tooltip",
+      isOpen ? "Close Telegram Log" : "Open Telegram Log",
+    );
+
+    if (!isOpen && focusToggle) {
+      toggleButton.focus({ preventScroll: true });
+    }
+  };
+
+  setOpenState(false);
+
+  toggleButton.addEventListener("click", () => {
+    const shouldOpen = !panel.classList.contains("is-open");
+    setOpenState(shouldOpen);
+  });
+
+  closeButton?.addEventListener("click", () => {
+    setOpenState(false, { focusToggle: true });
+  });
+
+  backdrop?.addEventListener("click", () => {
+    setOpenState(false);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !panel.classList.contains("is-open")) {
+      return;
+    }
+    event.preventDefault();
+    setOpenState(false, { focusToggle: true });
+  });
+}
+
+function setupTelegramLogFrameThemeSync(frame) {
+  const applyFrameTheme = () => {
+    const frameDocument = frame.contentDocument;
+    if (!frameDocument) return;
+
+    const frameRoot = frameDocument.documentElement;
+    if (!frameRoot) return;
+
+    const appRootStyles = getComputedStyle(document.documentElement);
+    const panelColor = appRootStyles.getPropertyValue("--panel").trim() || "#ffffff";
+    const bgColor = appRootStyles.getPropertyValue("--bg-bottom").trim() || panelColor;
+    const mutedColor = appRootStyles.getPropertyValue("--muted").trim() || "#eef2f8";
+    const lineColor = appRootStyles.getPropertyValue("--line").trim() || "#b6c0cf";
+    const inkColor = appRootStyles.getPropertyValue("--ink").trim() || "#111827";
+    const accentColor =
+      appRootStyles.getPropertyValue("--score-slider-active").trim() || "#3b82f6";
+    const isLightTheme =
+      document.documentElement.classList.contains("light") ||
+      document.documentElement.classList.contains("solarized-light");
+
+    const mutedTextColor = rgbString(
+      mixRgb(
+        parseColorToRgb(inkColor) ?? [17, 24, 39],
+        parseColorToRgb(lineColor) ?? [182, 192, 207],
+        0.42,
+      ),
+    );
+    const thumbHoverColor = rgbString(
+      mixRgb(
+        parseColorToRgb(lineColor) ?? [182, 192, 207],
+        parseColorToRgb(inkColor) ?? [17, 24, 39],
+        isLightTheme ? 0.16 : 0.2,
+      ),
+    );
+    const hoverSurfaceColor = rgbString(
+      mixRgb(
+        parseColorToRgb(mutedColor) ?? [238, 242, 248],
+        parseColorToRgb(lineColor) ?? [182, 192, 207],
+        isLightTheme ? 0.24 : 0.36,
+      ),
+    );
+    const codeTextColor = rgbString(
+      mixRgb(
+        parseColorToRgb(accentColor) ?? [59, 130, 246],
+        parseColorToRgb(inkColor) ?? [17, 24, 39],
+        0.18,
+      ),
+    );
+
+    frameRoot.style.setProperty("--log-scroll-track", mutedColor);
+    frameRoot.style.setProperty("--log-scroll-thumb", lineColor);
+    frameRoot.style.setProperty("--log-scroll-thumb-hover", thumbHoverColor);
+    frameRoot.style.colorScheme = isLightTheme ? "light" : "dark";
+
+    const themeStyleId = "justcal-log-scroll-theme";
+    let themeStyleElement = frameDocument.getElementById(themeStyleId);
+    if (!themeStyleElement) {
+      themeStyleElement = frameDocument.createElement("style");
+      themeStyleElement.id = themeStyleId;
+      (frameDocument.head || frameRoot).appendChild(themeStyleElement);
+    }
+    themeStyleElement.textContent = `
+      html {
+        scrollbar-width: thin !important;
+        scrollbar-color: ${lineColor} ${mutedColor} !important;
+      }
+
+      html,
+      body {
+        background: ${bgColor} !important;
+        color: ${inkColor} !important;
+      }
+
+      .page_wrap,
+      .page_body,
+      .page_header {
+        background: ${panelColor} !important;
+        color: ${inkColor} !important;
+      }
+
+      .page_header {
+        border-bottom: 1px solid ${lineColor} !important;
+      }
+
+      .bold,
+      .message,
+      .message .body,
+      .list_page .entry {
+        color: ${inkColor} !important;
+      }
+
+      .details,
+      .date.details,
+      .service .body {
+        color: ${mutedTextColor} !important;
+      }
+
+      .page_wrap a,
+      .default .from_name {
+        color: ${accentColor} !important;
+      }
+
+      a.block_link:hover,
+      div.selected,
+      .bot_button {
+        background: ${hoverSurfaceColor} !important;
+      }
+
+      code {
+        color: ${codeTextColor} !important;
+        background: ${mutedColor} !important;
+      }
+
+      pre {
+        color: ${inkColor} !important;
+        background: ${mutedColor} !important;
+        border: 1px solid ${lineColor} !important;
+      }
+
+      html::-webkit-scrollbar,
+      body::-webkit-scrollbar {
+        width: 10px !important;
+        height: 10px !important;
+      }
+
+      html::-webkit-scrollbar-track,
+      body::-webkit-scrollbar-track {
+        background: ${mutedColor} !important;
+      }
+
+      html::-webkit-scrollbar-thumb,
+      body::-webkit-scrollbar-thumb {
+        background-color: ${lineColor} !important;
+        border-radius: 999px !important;
+        border: 2px solid ${mutedColor} !important;
+      }
+
+      html::-webkit-scrollbar-thumb:hover,
+      body::-webkit-scrollbar-thumb:hover {
+        background-color: ${thumbHoverColor} !important;
+      }
+    `;
+  };
+
+  frame.addEventListener("load", applyFrameTheme);
+  applyFrameTheme();
+
+  const classObserver = new MutationObserver(() => {
+    applyFrameTheme();
+  });
+  classObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+}
+
 const jumpToPresentDay = () => {
   calendarApi?.scrollToPresentDay?.();
 };
 
 if (themeToggleButton) {
   setupThemeToggle(themeToggleButton);
+}
+
+if (telegramLogToggleButton && telegramLogPanel) {
+  setupTelegramLogPanel({
+    toggleButton: telegramLogToggleButton,
+    panel: telegramLogPanel,
+    backdrop: telegramLogPanelBackdrop,
+    closeButton: telegramLogCloseButton,
+  });
+}
+
+if (telegramLogFrame) {
+  setupTelegramLogFrameThemeSync(telegramLogFrame);
 }
 
 if (headerCalendarsButton) {

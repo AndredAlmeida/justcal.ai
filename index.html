@@ -103,6 +103,28 @@
         color-scheme: dark;
       }
 
+      :root.red {
+        --panel: #3a0b14;
+        --ink: #ffe4e9;
+        --line: #7d1f32;
+        --muted: #5d1424;
+        --bg-top: #2b050a;
+        --bg-bottom: #430e19;
+        --header-bg: rgba(43, 5, 10, 0.84);
+        --card-shadow: 0 12px 28px rgba(18, 2, 4, 0.6);
+        --calendar-action-bg: #5d1424;
+        --calendar-action-bg-hover: #772035;
+        --calendar-action-bg-active: #8c2a43;
+        --calendar-action-border: rgba(253, 186, 204, 0.36);
+        --calendar-action-ink: #ffe4e9;
+        --day-cell-hover-bg: rgba(244, 114, 182, 0.2);
+        --score-slider-track: color-mix(in srgb, #5d1424 68%, #7d1f32 32%);
+        --score-slider-active: #fb7185;
+        --score-slider-thumb: #fb7185;
+        --score-slider-thumb-contrast: #2b050a;
+        color-scheme: dark;
+      }
+
       :root.tokyo-night-storm {
         --panel: #1a1d33;
         --ink: #dde4ff;
@@ -1886,7 +1908,8 @@
       }
 
       #github-link,
-      #openclaw-link {
+      #openclaw-link,
+      #telegram-log-toggle {
         position: fixed;
         width: 2.25rem;
         height: 2.25rem;
@@ -1914,6 +1937,11 @@
       #openclaw-link {
         right: 1rem;
         bottom: calc(1rem + (2.25rem + 0.65rem) * 2);
+      }
+
+      #telegram-log-toggle {
+        right: 1rem;
+        bottom: calc(1rem + (2.25rem + 0.65rem) * 3);
       }
 
       #return-to-current {
@@ -3079,7 +3107,8 @@
       }
 
       #github-link:hover,
-      #openclaw-link:hover {
+      #openclaw-link:hover,
+      #telegram-log-toggle:hover {
         transform: translateY(-1px);
         box-shadow: 0 10px 22px rgba(15, 23, 42, 0.24);
       }
@@ -3091,7 +3120,8 @@
       }
 
       #github-link:active,
-      #openclaw-link:active {
+      #openclaw-link:active,
+      #telegram-log-toggle:active {
         transform: translateY(0);
       }
 
@@ -3103,7 +3133,8 @@
       }
 
       #github-link:focus-visible,
-      #openclaw-link:focus-visible {
+      #openclaw-link:focus-visible,
+      #telegram-log-toggle:focus-visible {
         outline: 2px solid #3b82f6;
         outline-offset: 2px;
       }
@@ -3126,6 +3157,120 @@
         object-fit: contain;
         opacity: 1;
         filter: saturate(0.56);
+      }
+
+      .telegram-log-icon {
+        width: 1.08rem;
+        height: 1.08rem;
+        display: block;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      #telegram-log-panel-backdrop {
+        position: fixed;
+        inset: 0;
+        background: color-mix(in srgb, #020617 64%, transparent);
+        opacity: 0;
+        pointer-events: none;
+        z-index: 121;
+        transition: opacity 0.24s ease;
+      }
+
+      #telegram-log-panel-backdrop.is-open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      #telegram-log-panel {
+        position: fixed;
+        top: max(0.5rem, calc(env(safe-area-inset-top, 0px) + 0.35rem));
+        right: max(0.5rem, calc(env(safe-area-inset-right, 0px) + 0.35rem));
+        bottom: max(0.5rem, calc(env(safe-area-inset-bottom, 0px) + 0.35rem));
+        width: min(33.6rem, calc((100vw - 1rem) * 0.7));
+        display: grid;
+        grid-template-rows: auto 1fr;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--panel);
+        box-shadow: 0 20px 48px rgba(2, 6, 23, 0.5);
+        overflow: hidden;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateX(calc(100% + 1.25rem));
+        transition:
+          transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+          opacity 0.2s ease;
+        z-index: 122;
+      }
+
+      #telegram-log-panel.is-open {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateX(0);
+      }
+
+      .telegram-log-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+        min-height: 2.65rem;
+        padding: 0.46rem 0.56rem 0.46rem 0.74rem;
+        border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+        background: color-mix(in srgb, var(--muted) 72%, var(--panel) 28%);
+      }
+
+      .telegram-log-panel-title {
+        margin: 0;
+        font-size: 0.76rem;
+        font-weight: 760;
+        letter-spacing: 0.02em;
+        color: var(--ink);
+      }
+
+      .telegram-log-close-btn {
+        width: 1.9rem;
+        height: 1.9rem;
+        display: inline-grid;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--panel);
+        color: var(--ink);
+        font-size: 1rem;
+        font-weight: 700;
+        line-height: 1;
+        padding: 0;
+        cursor: pointer;
+        transition:
+          transform 0.15s ease,
+          background-color 0.15s ease;
+      }
+
+      .telegram-log-close-btn:hover {
+        transform: translateY(-1px);
+        background: var(--muted);
+      }
+
+      .telegram-log-close-btn:active {
+        transform: translateY(0);
+      }
+
+      .telegram-log-close-btn:focus-visible {
+        outline: 2px solid #3b82f6;
+        outline-offset: 2px;
+      }
+
+      #telegram-log-frame {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: var(--panel);
+        color-scheme: light dark;
       }
 
       :root.dark td.empty {
@@ -3236,7 +3381,8 @@
       }
 
       :root.dark #github-link,
-      :root.dark #openclaw-link {
+      :root.dark #openclaw-link,
+      :root.dark #telegram-log-toggle {
         box-shadow: 0 8px 20px rgba(2, 6, 23, 0.6);
       }
 
@@ -3771,15 +3917,36 @@
           height: 2.05rem;
         }
 
+        #telegram-log-toggle {
+          right: 0.75rem;
+          bottom: calc(0.75rem + (2.05rem + 0.4rem) * 3);
+          width: 2.05rem;
+          height: 2.05rem;
+        }
+
         #return-to-current {
           right: 0.75rem;
           top: calc(env(safe-area-inset-top, 0px) + 4.4rem);
         }
 
         .github-icon,
-        .openclaw-icon {
+        .openclaw-icon,
+        .telegram-log-icon {
           width: 1rem;
           height: 1rem;
+        }
+
+        #telegram-log-panel {
+          top: env(safe-area-inset-top, 0px);
+          right: 0;
+          bottom: 0;
+          width: 100vw;
+          border-width: 1px 0 0 1px;
+          border-radius: 0;
+        }
+
+        .telegram-log-panel-title {
+          font-size: 0.72rem;
         }
       }
     </style>
@@ -4406,6 +4573,14 @@
         <button
           type="button"
           class="theme-option"
+          data-theme-option="red"
+          aria-label="Red Theme"
+        >
+          Red Theme
+        </button>
+        <button
+          type="button"
+          class="theme-option"
           data-theme-option="tokyo-night-storm"
           aria-label="Tokyo Night Storm"
         >
@@ -4460,6 +4635,21 @@
       </button>
     </div>
     <button
+      id="telegram-log-toggle"
+      type="button"
+      aria-label="Open Telegram Log"
+      aria-expanded="false"
+      class="tooltip-target tooltip-left"
+      data-tooltip="Open Telegram Log"
+    >
+      <svg class="telegram-log-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="4.5" y="4.5" width="15" height="15" rx="3" ry="3" />
+        <path d="M8 9h8" />
+        <path d="M8 12h8" />
+        <path d="M8 15h5" />
+      </svg>
+    </button>
+    <button
       id="openclaw-link"
       type="button"
       aria-label="Connect to your Agent (To be implemented)"
@@ -4488,6 +4678,32 @@
         />
       </svg>
     </a>
+    <div id="telegram-log-panel-backdrop" aria-hidden="true"></div>
+    <section
+      id="telegram-log-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Telegram chat log"
+      aria-hidden="true"
+    >
+      <div class="telegram-log-panel-header">
+        <p class="telegram-log-panel-title">Telegram Chat Log</p>
+        <button
+          id="telegram-log-close"
+          class="telegram-log-close-btn"
+          type="button"
+          aria-label="Close Telegram Log"
+        >
+          ×
+        </button>
+      </div>
+      <iframe
+        id="telegram-log-frame"
+        title="Telegram chat log"
+        src="/telegram-log/messages.html"
+        loading="lazy"
+      ></iframe>
+    </section>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
