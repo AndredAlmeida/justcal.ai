@@ -2772,7 +2772,6 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
         version: 1,
         "account-id": accountId,
         "calendar-id": calendar.id,
-        "calendar-name": calendar.name,
         "calendar-type": calendar.type,
         data: toNestedCalendarDayEntries(calendar.data),
       },
@@ -3181,10 +3180,6 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
       version: 1,
       "account-id": accountId,
       "calendar-id": persistedConfigCalendarId,
-      "calendar-name": normalizeBootstrapCalendarName(
-        cachedCalendarConfig.name || currentCalendar.name,
-        currentCalendarName,
-      ),
       "calendar-type": persistedConfigCalendarType,
       data: currentCalendarDataFile.payload.data,
     };

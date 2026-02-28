@@ -1529,7 +1529,6 @@ function buildCalendarDataFilePayload({ accountId, calendar, dayEntries }) {
     version: 1,
     "account-id": accountId,
     "calendar-id": calendar.id,
-    "calendar-name": calendar.name,
     "calendar-type": calendar.type,
     data: toNestedCalendarDayEntries(normalizedDayEntries),
   };
