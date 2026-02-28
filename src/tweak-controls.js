@@ -23,6 +23,7 @@ const MOBILE_LAYOUT_QUERY = "(max-width: 640px)";
 const MOBILE_DEFAULT_CAMERA_ZOOM = 2.2;
 const MOBILE_DEFAULT_CELL_EXPANSION_X = 2.75;
 const MOBILE_DEFAULT_CELL_EXPANSION_Y = 3.0;
+const DEBUG_HOTKEY_TOGGLED_EVENT = "justcal:debug-hotkey-toggled";
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -136,6 +137,13 @@ export function setupTweakControls({
 
       event.preventDefault();
       toggleControlsPanel();
+      document.dispatchEvent(
+        new CustomEvent(DEBUG_HOTKEY_TOGGLED_EVENT, {
+          detail: {
+            expanded: !controlsPanel.hidden,
+          },
+        }),
+      );
     });
   }
 

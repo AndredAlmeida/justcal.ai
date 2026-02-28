@@ -10,6 +10,7 @@ const headerCalendarsButton = document.getElementById("header-calendars-btn");
 const profileSwitcher = document.getElementById("profile-switcher");
 const headerProfileButton = document.getElementById("header-profile-btn");
 const profileOptions = document.getElementById("profile-options");
+const driveActionsMenu = document.getElementById("drive-actions-menu");
 const returnToCurrentButton = document.getElementById("return-to-current");
 const themeToggleButton = document.getElementById("theme-toggle");
 const mobileDebugToggleButton = document.getElementById("mobile-debug-toggle");
@@ -1244,11 +1245,12 @@ function setupTelegramLogPanel({ toggleButton, panel, backdrop, closeButton }) {
   });
 }
 
-function setupProfileSwitcher({ switcher, button, options, onDriveStateImported }) {
-  const optionButtons = [...options.querySelectorAll("[data-profile-action]")];
+function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveStateImported }) {
+  const optionButtons = [...document.querySelectorAll("[data-profile-action]")];
   const googleDriveButton = options.querySelector('[data-profile-action="google-drive"]');
   const googleDriveLabel = options.querySelector("#profile-google-drive-label");
-  const optionsDivider = options.querySelector(".calendar-options-divider");
+  const profileAccountList = options.querySelector("#profile-account-list");
+  const profileActionsDivider = options.querySelector("#profile-actions-divider");
   const driveBusyOverlay = document.getElementById("drive-busy-overlay");
   const driveDirtyIndicator = document.getElementById("drive-dirty-indicator");
   const GOOGLE_CONNECTED_COOKIE_NAME = "justcal_google_connected";
@@ -1273,6 +1275,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
   let cachedDriveFolderId = "";
   let cachedDriveConfigFileId = "";
   let cachedDriveAccountId = readStoredDriveAccountId();
+  const knownDriveAccountsById = new Map();
   const cachedDriveCalendarConfigById = new Map();
   const cachedDriveCalendarFileMetaById = new Map();
   const cachedDriveFileIdByName = new Map();
@@ -1449,6 +1452,128 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     }
   };
 
+  const normalizeProfileAccountName = (rawName) => {
+    const normalizedName = String(rawName ?? "").replace(/\s+/g, " ").trim();
+    return normalizedName || "default";
+  };
+
+  const renderKnownProfileAccounts = () => {
+    if (!profileAccountList) {
+      return;
+    }
+
+    profileAccountList.textContent = "";
+    const knownAccounts = [...knownDriveAccountsById.values()]
+      .filter((entry) => isObjectLike(entry) && isValidDriveAccountId(entry.id))
+      .map((entry) => ({
+        id: entry.id.trim(),
+        name: normalizeProfileAccountName(entry.name),
+      }));
+    const selectedAccountId = isValidDriveAccountId(cachedDriveAccountId) ? cachedDriveAccountId : "";
+
+    if (selectedAccountId && !knownAccounts.some((entry) => entry.id === selectedAccountId)) {
+      knownAccounts.push({
+        id: selectedAccountId,
+        name: "default",
+      });
+    }
+
+    if (knownAccounts.length === 0) {
+      const fallbackOption = document.createElement("div");
+      fallbackOption.className = "calendar-option profile-option profile-account-option is-current";
+      fallbackOption.textContent = "default";
+      fallbackOption.setAttribute("aria-label", "Account default");
+      profileAccountList.appendChild(fallbackOption);
+      return;
+    }
+
+    knownAccounts.sort((leftEntry, rightEntry) => {
+      const leftIsCurrent = leftEntry.id === selectedAccountId;
+      const rightIsCurrent = rightEntry.id === selectedAccountId;
+      if (leftIsCurrent && !rightIsCurrent) return -1;
+      if (!leftIsCurrent && rightIsCurrent) return 1;
+      return leftEntry.name.localeCompare(rightEntry.name, undefined, { sensitivity: "base" });
+    });
+
+    const accountFragment = document.createDocumentFragment();
+    knownAccounts.forEach((accountEntry) => {
+      const accountOption = document.createElement("div");
+      accountOption.className = "calendar-option profile-option profile-account-option";
+      if (accountEntry.id === selectedAccountId) {
+        accountOption.classList.add("is-current");
+      }
+      accountOption.textContent = accountEntry.name;
+      accountOption.setAttribute("aria-label", `Account ${accountEntry.name}`);
+      accountOption.setAttribute("title", accountEntry.id);
+      accountFragment.appendChild(accountOption);
+    });
+    profileAccountList.appendChild(accountFragment);
+  };
+
+  const rememberKnownDriveAccount = ({
+    accountId = "",
+    accountName = "",
+    setCurrent = false,
+    render = true,
+  } = {}) => {
+    const normalizedAccountId = typeof accountId === "string" ? accountId.trim() : "";
+    if (!isValidDriveAccountId(normalizedAccountId)) {
+      return "";
+    }
+    const normalizedAccountName = normalizeProfileAccountName(accountName);
+    knownDriveAccountsById.set(normalizedAccountId, {
+      id: normalizedAccountId,
+      name: normalizedAccountName,
+    });
+    if (setCurrent) {
+      persistDriveAccountId(normalizedAccountId);
+      cachedDriveAccountId = normalizedAccountId;
+    }
+    if (render) {
+      renderKnownProfileAccounts();
+    }
+    return normalizedAccountId;
+  };
+
+  const rememberKnownDriveAccountsFromConfigPayload = (configPayload) => {
+    if (!isObjectLike(configPayload)) {
+      return;
+    }
+    const accountsById = isObjectLike(configPayload.accounts) ? configPayload.accounts : {};
+    const requestedCurrentAccountId =
+      typeof configPayload["current-account-id"] === "string"
+        ? configPayload["current-account-id"].trim()
+        : "";
+
+    Object.entries(accountsById).forEach(([rawAccountId, rawAccount]) => {
+      if (!isObjectLike(rawAccount)) {
+        return;
+      }
+      const normalizedAccountId = typeof rawAccountId === "string" ? rawAccountId.trim() : "";
+      if (!isValidDriveAccountId(normalizedAccountId)) {
+        return;
+      }
+      rememberKnownDriveAccount({
+        accountId: normalizedAccountId,
+        accountName: rawAccount.name,
+        setCurrent: false,
+        render: false,
+      });
+    });
+
+    if (isValidDriveAccountId(requestedCurrentAccountId)) {
+      const existingAccountEntry = knownDriveAccountsById.get(requestedCurrentAccountId);
+      rememberKnownDriveAccount({
+        accountId: requestedCurrentAccountId,
+        accountName: isObjectLike(existingAccountEntry) ? existingAccountEntry.name : "",
+        setCurrent: true,
+        render: false,
+      });
+    }
+
+    renderKnownProfileAccounts();
+  };
+
   const syncStoredDriveAccountIdFromPayload = (payload) => {
     const accountId =
       payload && typeof payload === "object" && typeof payload.accountId === "string"
@@ -1457,8 +1582,15 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     if (!accountId) {
       return "";
     }
-    persistDriveAccountId(accountId);
-    cachedDriveAccountId = accountId;
+    const accountName =
+      payload && typeof payload === "object" && typeof payload.account === "string"
+        ? payload.account.trim()
+        : "";
+    rememberKnownDriveAccount({
+      accountId,
+      accountName,
+      setCurrent: true,
+    });
     return accountId;
   };
 
@@ -1472,7 +1604,16 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     cachedDriveFileIdByName.clear();
     if (!keepAccountId) {
       cachedDriveAccountId = "";
+      knownDriveAccountsById.clear();
+    } else if (isValidDriveAccountId(cachedDriveAccountId)) {
+      rememberKnownDriveAccount({
+        accountId: cachedDriveAccountId,
+        accountName: knownDriveAccountsById.get(cachedDriveAccountId)?.name || "default",
+        setCurrent: false,
+        render: false,
+      });
     }
+    renderKnownProfileAccounts();
   };
 
   const rememberCachedCalendarFileMeta = ({ calendarId = "", fileName = "", fileId = "" } = {}) => {
@@ -1582,6 +1723,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
       return;
     }
     syncStoredDriveAccountIdFromPayload(payload);
+    rememberKnownDriveAccountsFromConfigPayload(payload);
 
     const folderId = typeof payload.folderId === "string" ? payload.folderId.trim() : "";
     if (folderId) {
@@ -1660,16 +1802,22 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
       return;
     }
 
-    if (optionsDivider && optionsDivider.parentElement === options) {
-      if (optionsDivider.nextElementSibling !== googleDriveButton) {
-        optionsDivider.insertAdjacentElement("afterend", googleDriveButton);
+    if (profileActionsDivider && profileActionsDivider.parentElement === options) {
+      if (profileActionsDivider.nextElementSibling !== googleDriveButton) {
+        profileActionsDivider.insertAdjacentElement("afterend", googleDriveButton);
       }
       return;
     }
 
-    if (options.firstElementChild !== googleDriveButton) {
-      options.insertBefore(googleDriveButton, options.firstElementChild);
+    const firstNonGoogleAction = optionButtons.find(
+      (optionButton) => optionButton !== googleDriveButton && optionButton.parentElement === options,
+    );
+    if (firstNonGoogleAction) {
+      options.insertBefore(googleDriveButton, firstNonGoogleAction);
+      return;
     }
+
+    options.appendChild(googleDriveButton);
   };
 
   const normalizeBootstrapCalendarName = (rawName, fallbackName) => {
@@ -2959,6 +3107,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
         fileId: existingConfigFileId,
       });
       if (readConfigResult.ok) {
+        rememberKnownDriveAccountsFromConfigPayload(readConfigResult.payload);
         const rawAccountId =
           typeof readConfigResult.payload["current-account-id"] === "string"
             ? readConfigResult.payload["current-account-id"].trim()
@@ -3466,6 +3615,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
         };
       }
 
+      rememberKnownDriveAccountsFromConfigPayload(readConfigResult.payload);
       const accountEntry = extractCurrentAccountFromDriveConfig(readConfigResult.payload);
       if (!accountEntry) {
         return {
@@ -4412,6 +4562,24 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     }
   };
 
+  const setActionsMenuExpanded = (isExpanded) => {
+    if (!actionsMenu) {
+      return;
+    }
+    actionsMenu.classList.toggle("is-open", isExpanded);
+    actionsMenu.setAttribute("aria-hidden", String(!isExpanded));
+  };
+
+  if (isValidDriveAccountId(cachedDriveAccountId)) {
+    rememberKnownDriveAccount({
+      accountId: cachedDriveAccountId,
+      accountName: "default",
+      setCurrent: false,
+      render: false,
+    });
+  }
+  renderKnownProfileAccounts();
+  setActionsMenuExpanded(false);
   setExpanded(false);
 
   if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
@@ -4479,6 +4647,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     const shouldExpand = !switcher.classList.contains("is-expanded");
     setExpanded(shouldExpand);
     if (shouldExpand) {
+      setActionsMenuExpanded(false);
       void refreshGoogleDriveStatus();
     }
   });
@@ -4486,6 +4655,9 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
   optionButtons.forEach((optionButton) => {
     optionButton.addEventListener("click", async (event) => {
       const actionType = optionButton.dataset.profileAction || "";
+      if (actionType !== "google-drive" && actionsMenu && actionsMenu.contains(optionButton)) {
+        setActionsMenuExpanded(false);
+      }
       if (actionType === "google-drive") {
         if (!isGoogleDriveConfigured) {
           event.preventDefault();
@@ -4977,12 +5149,52 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     setExpanded(false);
   });
 
+  document.addEventListener("click", (event) => {
+    if (!actionsMenu || !actionsMenu.classList.contains("is-open")) {
+      return;
+    }
+    const clickTarget = event.target;
+    if (!(clickTarget instanceof Node)) {
+      return;
+    }
+    if (actionsMenu.contains(clickTarget)) {
+      return;
+    }
+    setActionsMenuExpanded(false);
+  });
+
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || !switcher.classList.contains("is-expanded")) {
+    if (event.key !== "Escape") {
+      return;
+    }
+    let handled = false;
+    if (actionsMenu && actionsMenu.classList.contains("is-open")) {
+      setActionsMenuExpanded(false);
+      handled = true;
+    }
+    if (switcher.classList.contains("is-expanded")) {
+      setExpanded(false, { focusButton: true });
+      handled = true;
+    }
+    if (!handled) {
       return;
     }
     event.preventDefault();
-    setExpanded(false, { focusButton: true });
+  });
+
+  document.addEventListener("justcal:debug-hotkey-toggled", (event) => {
+    if (!actionsMenu) {
+      return;
+    }
+    const detail = event instanceof CustomEvent && isObjectLike(event.detail) ? event.detail : {};
+    const nextExpanded =
+      typeof detail.expanded === "boolean"
+        ? detail.expanded
+        : !actionsMenu.classList.contains("is-open");
+    setActionsMenuExpanded(nextExpanded);
+    if (nextExpanded) {
+      setExpanded(false);
+    }
   });
 
   if (hasGoogleConnectedCookie()) {
@@ -5206,6 +5418,7 @@ if (profileSwitcher && headerProfileButton && profileOptions) {
     switcher: profileSwitcher,
     button: headerProfileButton,
     options: profileOptions,
+    actionsMenu: driveActionsMenu,
     onDriveStateImported: applyDriveImportedStateInPlace,
   });
 }

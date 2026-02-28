@@ -1120,7 +1120,8 @@
       }
 
       .month-table-shell {
-        border-radius: 14px;
+        --month-table-radius: 14px;
+        border-radius: var(--month-table-radius);
         overflow: hidden;
         border: 1px solid var(--line);
         background: var(--panel);
@@ -1868,6 +1869,14 @@
         box-shadow: inset 0 0 0 2px #3b82f6;
       }
 
+      tbody tr:last-child td.day-cell.today-cell:first-child:not(.selected-day) {
+        border-bottom-left-radius: var(--month-table-radius, 14px);
+      }
+
+      tbody tr:last-child td.day-cell.today-cell:last-child:not(.selected-day) {
+        border-bottom-right-radius: var(--month-table-radius, 14px);
+      }
+
       .day-state-btn {
         width: 2.02rem;
         height: 2.02rem;
@@ -2134,6 +2143,25 @@
         text-decoration: none;
       }
 
+      #profile-account-list {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      #profile-options .profile-account-option {
+        min-height: 2.05rem;
+        cursor: default;
+        pointer-events: none;
+        opacity: 0.9;
+      }
+
+      #profile-options .profile-account-option.is-current {
+        opacity: 1;
+        font-weight: 600;
+        background: color-mix(in srgb, var(--line) 14%, transparent);
+      }
+
       #profile-options .profile-option-label {
         min-width: 0;
         overflow: hidden;
@@ -2166,6 +2194,54 @@
         opacity: 0.58;
         cursor: not-allowed;
         pointer-events: none;
+      }
+
+      #drive-actions-menu {
+        position: fixed;
+        left: max(0.62rem, env(safe-area-inset-left, 0px));
+        bottom: max(1.12rem, env(safe-area-inset-bottom, 0px));
+        width: min(13.4rem, calc(100vw - 1.24rem));
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        padding: 0.38rem 0;
+        border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--panel) 95%, transparent);
+        box-shadow: 0 10px 26px color-mix(in srgb, #0f172a 74%, transparent);
+        opacity: 0;
+        transform: translateY(0.46rem);
+        pointer-events: none;
+        z-index: 130;
+        transition:
+          opacity 0.18s ease,
+          transform 0.2s ease;
+      }
+
+      #drive-actions-menu.is-open {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+      }
+
+      .drive-actions-title {
+        margin: 0;
+        padding: 0.1rem 0.88rem 0.34rem;
+        font-size: 0.68rem;
+        font-weight: 720;
+        letter-spacing: 0.02em;
+        color: var(--ink);
+        opacity: 0.9;
+      }
+
+      #drive-actions-list {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      #drive-actions-list .drive-action-option {
+        border-radius: 0;
       }
 
       #calendar-switcher.is-expanded.is-adding #calendar-options {
@@ -3743,6 +3819,7 @@
         }
 
         .month-table-shell {
+          --month-table-radius: 10px;
           border-radius: 10px;
         }
 
@@ -4083,6 +4160,13 @@
         #profile-switcher.is-expanded #profile-options {
           width: min(12.8rem, 78vw);
           max-height: calc(100dvh - 6.4rem);
+        }
+
+        #drive-actions-menu {
+          width: min(12.2rem, calc(100vw - 1rem));
+          left: max(0.5rem, env(safe-area-inset-left, 0px));
+          bottom: max(0.96rem, env(safe-area-inset-bottom, 0px));
+          border-radius: 10px;
         }
 
         #calendar-switcher.is-expanded.is-adding #calendar-options {
@@ -4752,8 +4836,17 @@
         </div>
         <div id="profile-switcher">
           <div id="profile-options" aria-label="Account options">
-            <p class="profile-options-title">Account</p>
-            <div class="calendar-options-divider" aria-hidden="true"></div>
+            <p class="profile-options-title">Accounts</p>
+            <div id="profile-account-list" class="profile-account-list" aria-label="Accounts available">
+              <div class="calendar-option profile-option profile-account-option is-current">
+                default
+              </div>
+            </div>
+            <div
+              id="profile-actions-divider"
+              class="calendar-options-divider"
+              aria-hidden="true"
+            ></div>
             <a
               id="profile-google-drive-action"
               href="/api/auth/google/start"
@@ -4795,46 +4888,6 @@
                 Login to Google Drive
               </span>
             </a>
-            <button
-              type="button"
-              class="calendar-option profile-option"
-              data-profile-action="save"
-              aria-label="Save All"
-            >
-              Save All
-            </button>
-            <button
-              type="button"
-              class="calendar-option profile-option"
-              data-profile-action="save-calendar"
-              aria-label="Save Calendar"
-            >
-              Save Calendar
-            </button>
-            <button
-              type="button"
-              class="calendar-option profile-option"
-              data-profile-action="load-all"
-              aria-label="Load All"
-            >
-              Load All
-            </button>
-            <button
-              type="button"
-              class="calendar-option profile-option"
-              data-profile-action="load-calendar"
-              aria-label="Load Calendar"
-            >
-              Load Calendar
-            </button>
-            <button
-              type="button"
-              class="calendar-option profile-option"
-              data-profile-action="clear-all"
-              aria-label="Clear All"
-            >
-              Clear All
-            </button>
           </div>
           <button
             id="header-profile-btn"
@@ -5062,6 +5115,51 @@
         />
       </svg>
     </a>
+    <section id="drive-actions-menu" aria-label="Drive actions" aria-hidden="true">
+      <p class="drive-actions-title">Drive Actions (P)</p>
+      <div id="drive-actions-list">
+        <button
+          type="button"
+          class="calendar-option drive-action-option"
+          data-profile-action="save"
+          aria-label="Save All"
+        >
+          Save All
+        </button>
+        <button
+          type="button"
+          class="calendar-option drive-action-option"
+          data-profile-action="save-calendar"
+          aria-label="Save Calendar"
+        >
+          Save Calendar
+        </button>
+        <button
+          type="button"
+          class="calendar-option drive-action-option"
+          data-profile-action="load-all"
+          aria-label="Load All"
+        >
+          Load All
+        </button>
+        <button
+          type="button"
+          class="calendar-option drive-action-option"
+          data-profile-action="load-calendar"
+          aria-label="Load Calendar"
+        >
+          Load Calendar
+        </button>
+        <button
+          type="button"
+          class="calendar-option drive-action-option"
+          data-profile-action="clear-all"
+          aria-label="Clear All"
+        >
+          Clear All
+        </button>
+      </div>
+    </section>
     <div id="drive-dirty-indicator" aria-hidden="true"></div>
     <div id="drive-busy-overlay" aria-hidden="true">
       <div
