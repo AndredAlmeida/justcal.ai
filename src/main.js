@@ -1251,6 +1251,10 @@ function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveS
   const googleDriveLabel = options.querySelector("#profile-google-drive-label");
   const profileAccountList = options.querySelector("#profile-account-list");
   const profileActionsDivider = options.querySelector("#profile-actions-divider");
+  const profileAddAccountShell = options.querySelector("#profile-add-account-shell");
+  const profileAddAccountTrigger = options.querySelector("#profile-add-account-trigger");
+  const profileAddAccountEditor = options.querySelector("#profile-add-account-editor");
+  const profileAddAccountNameInput = options.querySelector("#new-account-name");
   const driveBusyOverlay = document.getElementById("drive-busy-overlay");
   const driveDirtyIndicator = document.getElementById("drive-dirty-indicator");
   const GOOGLE_CONNECTED_COOKIE_NAME = "justcal_google_connected";
@@ -4401,6 +4405,7 @@ function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveS
         : "";
     switcher.classList.toggle("is-drive-connected", connected);
     reorderGoogleDriveOption(connected);
+    setProfileAddAccountAvailable(Boolean(configured && connected));
     if (!connected) {
       hasBootstrappedDriveConfig = false;
       clearDriveRuntimeCache();
@@ -4551,11 +4556,41 @@ function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveS
     }
   };
 
+  const setProfileAddAccountExpanded = (isExpanded, { focusTrigger = false } = {}) => {
+    if (!profileAddAccountShell || !profileAddAccountEditor) {
+      return;
+    }
+    profileAddAccountShell.classList.toggle("is-editing", isExpanded);
+    profileAddAccountEditor.setAttribute("aria-hidden", String(!isExpanded));
+    if (isExpanded) {
+      profileAddAccountNameInput?.focus({ preventScroll: true });
+      return;
+    }
+    if (focusTrigger) {
+      profileAddAccountTrigger?.focus({ preventScroll: true });
+    }
+  };
+
+  const setProfileAddAccountAvailable = (isAvailable) => {
+    if (!profileAddAccountShell) {
+      return;
+    }
+    profileAddAccountShell.hidden = !isAvailable;
+    profileAddAccountShell.setAttribute("aria-hidden", String(!isAvailable));
+    if (!isAvailable) {
+      setProfileAddAccountExpanded(false);
+    }
+  };
+
   const setExpanded = (isExpanded, { focusButton = false } = {}) => {
     switcher.classList.toggle("is-expanded", isExpanded);
     button.setAttribute("aria-expanded", String(isExpanded));
     button.setAttribute("aria-label", isExpanded ? "Close account menu" : "Open account menu");
     button.setAttribute("data-tooltip", isExpanded ? "Close Account Menu" : "Account Menu");
+
+    if (!isExpanded) {
+      setProfileAddAccountExpanded(false);
+    }
 
     if (!isExpanded && focusButton) {
       button.focus({ preventScroll: true });
@@ -4579,6 +4614,7 @@ function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveS
     });
   }
   renderKnownProfileAccounts();
+  setProfileAddAccountAvailable(false);
   setActionsMenuExpanded(false);
   setExpanded(false);
 
@@ -4658,6 +4694,29 @@ function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveS
       if (actionType !== "google-drive" && actionsMenu && actionsMenu.contains(optionButton)) {
         setActionsMenuExpanded(false);
       }
+
+      if (actionType === "add-account") {
+        event.preventDefault();
+        if (!isGoogleDriveConnected || !profileAddAccountShell || profileAddAccountShell.hidden) {
+          return;
+        }
+        const shouldExpand = !profileAddAccountShell.classList.contains("is-editing");
+        setProfileAddAccountExpanded(shouldExpand);
+        return;
+      }
+
+      if (actionType === "add-account-cancel") {
+        event.preventDefault();
+        setProfileAddAccountExpanded(false, { focusTrigger: true });
+        return;
+      }
+
+      if (actionType === "add-account-submit") {
+        event.preventDefault();
+        logGoogleAuthMessage("info", "Add Account is not implemented yet (UI only).");
+        return;
+      }
+
       if (actionType === "google-drive") {
         if (!isGoogleDriveConfigured) {
           event.preventDefault();

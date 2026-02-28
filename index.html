@@ -2196,6 +2196,65 @@
         pointer-events: none;
       }
 
+      #profile-options .profile-add-account-shell {
+        display: grid;
+        gap: 0.2rem;
+      }
+
+      #profile-options .profile-add-account-shell[hidden] {
+        display: none;
+      }
+
+      #profile-options .profile-add-account-trigger {
+        border-radius: 0;
+        max-height: 2.2rem;
+        overflow: hidden;
+        transition:
+          max-height 0.22s ease,
+          opacity 0.18s ease,
+          padding 0.18s ease,
+          border-width 0.18s ease,
+          box-shadow 0.18s ease,
+          transform 0.18s ease;
+      }
+
+      #profile-options .profile-add-account-editor {
+        max-height: 0;
+        opacity: 0;
+        overflow: hidden;
+        pointer-events: none;
+        transform: translateY(-0.2rem);
+        padding: 0 0.82rem;
+        display: grid;
+        gap: 0.38rem;
+        transition:
+          max-height 0.24s ease,
+          opacity 0.18s ease,
+          transform 0.18s ease;
+      }
+
+      #profile-options .profile-add-account-shell.is-editing .profile-add-account-trigger {
+        max-height: 0;
+        min-height: 0;
+        opacity: 0;
+        pointer-events: none;
+        padding-top: 0;
+        padding-bottom: 0;
+        border-width: 0;
+        box-shadow: none;
+        transform: scale(0.98);
+      }
+
+      #profile-options .profile-add-account-shell.is-editing .profile-add-account-editor {
+        max-height: calc(11.4rem + 6px);
+        opacity: 1;
+        overflow: visible;
+        pointer-events: auto;
+        transform: translateY(0);
+        padding-top: 3px;
+        padding-bottom: 3px;
+      }
+
       #drive-actions-menu {
         position: fixed;
         left: max(0.62rem, env(safe-area-inset-left, 0px));
@@ -4847,6 +4906,63 @@
               class="calendar-options-divider"
               aria-hidden="true"
             ></div>
+            <div id="profile-add-account-shell" class="profile-add-account-shell" hidden>
+              <button
+                id="profile-add-account-trigger"
+                type="button"
+                class="calendar-option profile-option profile-add-account-trigger"
+                data-profile-action="add-account"
+                aria-label="Add Account"
+              >
+                <span class="calendar-option-icon" aria-hidden="true">+</span>
+                <span class="calendar-option-label">Add Account</span>
+              </button>
+              <div
+                id="profile-add-account-editor"
+                class="profile-add-account-editor"
+                aria-label="New Account"
+                aria-hidden="true"
+              >
+                <div class="calendar-add-panel">
+                  <p class="calendar-add-title">New Account</p>
+                  <label class="calendar-add-field" for="new-account-name">
+                    <span class="calendar-add-field-label">Name</span>
+                    <input
+                      id="new-account-name"
+                      class="calendar-add-input"
+                      type="text"
+                      placeholder="Account name"
+                      autocomplete="off"
+                      autocapitalize="off"
+                      autocorrect="off"
+                      spellcheck="false"
+                      data-1p-ignore="true"
+                      data-lpignore="true"
+                    />
+                  </label>
+                  <div class="calendar-add-actions">
+                    <button
+                      id="profile-add-account-submit"
+                      type="button"
+                      class="calendar-option calendar-action-btn"
+                      data-profile-action="add-account-submit"
+                      aria-label="Add"
+                    >
+                      Add
+                    </button>
+                    <button
+                      id="profile-add-account-cancel"
+                      type="button"
+                      class="calendar-option calendar-action-btn"
+                      data-profile-action="add-account-cancel"
+                      aria-label="Cancel"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
             <a
               id="profile-google-drive-action"
               href="/api/auth/google/start"
