@@ -1278,6 +1278,19 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
   const cachedDriveFileIdByName = new Map();
   const baselineCalendarMetaSignatureById = new Map();
   const baselineCalendarDaySignatureById = new Map();
+  const AUTOSAVE_DEBOUNCE_MS = 2500;
+  const AUTOSAVE_MAX_WAIT_MS = 20000;
+  const AUTOSAVE_RETRY_STEPS_MS = [1000, 2000, 5000, 10000];
+  let autosaveDebounceTimer = 0;
+  let autosaveMaxWaitTimer = 0;
+  let autosaveRetryTimer = 0;
+  let autosaveRetryAttempt = 0;
+  let autosaveInFlight = false;
+  let autosaveRunPromise = null;
+  let autosavePendingRun = false;
+  let autosavePendingMode = "calendar";
+  let lastObservedLocalActiveCalendarId =
+    typeof getStoredActiveCalendar?.().id === "string" ? getStoredActiveCalendar().id : "";
 
   const logGoogleAuthMessage = (level, message, details) => {
     const logger = typeof console[level] === "function" ? console[level] : console.log;
@@ -2062,6 +2075,64 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     driveDirtyIndicator.setAttribute("aria-hidden", String(!isDirty));
   };
 
+  const resolveActiveCalendarIdFromSignatures = ({ currentCalendarId, signaturesByCalendarId }) => {
+    const requestedCalendarId = typeof currentCalendarId === "string" ? currentCalendarId.trim() : "";
+    if (requestedCalendarId && signaturesByCalendarId.has(requestedCalendarId)) {
+      return requestedCalendarId;
+    }
+    return signaturesByCalendarId.keys().next().value || "";
+  };
+
+  const readDriveDirtyCalendarSummary = () => {
+    const { currentCalendarId, signaturesByCalendarId } = readLocalDriveCalendarSignatures();
+    const resolvedActiveCalendarId = resolveActiveCalendarIdFromSignatures({
+      currentCalendarId,
+      signaturesByCalendarId,
+    });
+
+    const dirtyCalendarIds = [];
+    const dirtyMetaCalendarIds = [];
+    const dirtyDayCalendarIds = [];
+    signaturesByCalendarId.forEach((signatures, calendarId) => {
+      const baselineMetaSignature = baselineCalendarMetaSignatureById.get(calendarId);
+      const baselineDaySignature = baselineCalendarDaySignatureById.get(calendarId);
+      const isMetaDirty =
+        typeof baselineMetaSignature !== "string" || baselineMetaSignature !== signatures.meta;
+      const isDayDirty =
+        typeof baselineDaySignature !== "string" || baselineDaySignature !== signatures.day;
+      if (isMetaDirty || isDayDirty) {
+        dirtyCalendarIds.push(calendarId);
+      }
+      if (isMetaDirty) {
+        dirtyMetaCalendarIds.push(calendarId);
+      }
+      if (isDayDirty) {
+        dirtyDayCalendarIds.push(calendarId);
+      }
+    });
+
+    return {
+      currentCalendarId: resolvedActiveCalendarId,
+      signaturesByCalendarId,
+      dirtyCalendarIds,
+      dirtyMetaCalendarIds,
+      dirtyDayCalendarIds,
+      hasDirtyCalendars: dirtyCalendarIds.length > 0,
+      currentCalendarMetaDirty: dirtyMetaCalendarIds.includes(resolvedActiveCalendarId),
+      currentCalendarDayDirty: dirtyDayCalendarIds.includes(resolvedActiveCalendarId),
+      currentCalendarDirty: dirtyCalendarIds.includes(resolvedActiveCalendarId),
+    };
+  };
+
+  const refreshObservedLocalActiveCalendarId = () => {
+    const { currentCalendarId, signaturesByCalendarId } = readLocalDriveCalendarSignatures();
+    lastObservedLocalActiveCalendarId = resolveActiveCalendarIdFromSignatures({
+      currentCalendarId,
+      signaturesByCalendarId,
+    });
+    return lastObservedLocalActiveCalendarId;
+  };
+
   const syncCalendarDirtyIndicator = () => {
     if (!isGoogleDriveConfigured || !isGoogleDriveConnected) {
       setCalendarDirtyIndicator(false);
@@ -2076,31 +2147,8 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
       return;
     }
 
-    const { currentCalendarId, signaturesByCalendarId } = readLocalDriveCalendarSignatures();
-    const resolvedActiveCalendarId =
-      currentCalendarId && signaturesByCalendarId.has(currentCalendarId)
-        ? currentCalendarId
-        : signaturesByCalendarId.keys().next().value || "";
-    if (!resolvedActiveCalendarId) {
-      setCalendarDirtyIndicator(false);
-      return;
-    }
-
-    const currentSignatures = signaturesByCalendarId.get(resolvedActiveCalendarId);
-    if (!currentSignatures) {
-      setCalendarDirtyIndicator(false);
-      return;
-    }
-
-    const baselineMetaSignature = baselineCalendarMetaSignatureById.get(resolvedActiveCalendarId);
-    const baselineDaySignature = baselineCalendarDaySignatureById.get(resolvedActiveCalendarId);
-    const isMetaDirty =
-      typeof baselineMetaSignature !== "string" ||
-      baselineMetaSignature !== currentSignatures.meta;
-    const isDayDirty =
-      typeof baselineDaySignature !== "string" ||
-      baselineDaySignature !== currentSignatures.day;
-    setCalendarDirtyIndicator(isMetaDirty || isDayDirty);
+    const dirtySummary = readDriveDirtyCalendarSummary();
+    setCalendarDirtyIndicator(Boolean(dirtySummary.currentCalendarDirty));
   };
 
   const clearCalendarDriveDirtyBaselines = () => {
@@ -3627,6 +3675,298 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     };
   };
 
+  const mergeAutosaveModes = (leftMode = "calendar", rightMode = "calendar") => {
+    return leftMode === "all" || rightMode === "all" ? "all" : "calendar";
+  };
+
+  const clearAutosaveDebounceTimerIfScheduled = () => {
+    if (!autosaveDebounceTimer) {
+      return;
+    }
+    window.clearTimeout(autosaveDebounceTimer);
+    autosaveDebounceTimer = 0;
+  };
+
+  const clearAutosaveMaxWaitTimerIfScheduled = () => {
+    if (!autosaveMaxWaitTimer) {
+      return;
+    }
+    window.clearTimeout(autosaveMaxWaitTimer);
+    autosaveMaxWaitTimer = 0;
+  };
+
+  const clearAutosaveRetryTimerIfScheduled = () => {
+    if (!autosaveRetryTimer) {
+      return;
+    }
+    window.clearTimeout(autosaveRetryTimer);
+    autosaveRetryTimer = 0;
+  };
+
+  const clearAutosaveScheduledTimers = ({ includeRetry = false } = {}) => {
+    clearAutosaveDebounceTimerIfScheduled();
+    clearAutosaveMaxWaitTimerIfScheduled();
+    if (includeRetry) {
+      clearAutosaveRetryTimerIfScheduled();
+    }
+  };
+
+  const resetAutosaveRetryState = () => {
+    clearAutosaveRetryTimerIfScheduled();
+    autosaveRetryAttempt = 0;
+  };
+
+  const resetAutosaveRuntimeState = () => {
+    clearAutosaveScheduledTimers({ includeRetry: true });
+    autosavePendingRun = false;
+    autosavePendingMode = "calendar";
+    autosaveRetryAttempt = 0;
+    refreshObservedLocalActiveCalendarId();
+  };
+
+  const resolveAutosaveWriteMode = ({ requestedMode = "calendar", dirtySummary }) => {
+    if (!dirtySummary?.hasDirtyCalendars) {
+      return "none";
+    }
+    if (requestedMode === "all") {
+      return "all";
+    }
+
+    if (dirtySummary.dirtyMetaCalendarIds.length > 0) {
+      return "all";
+    }
+    if (dirtySummary.dirtyCalendarIds.length !== 1) {
+      return "all";
+    }
+    if (!dirtySummary.currentCalendarDirty) {
+      return "all";
+    }
+    if (dirtySummary.currentCalendarDayDirty && !dirtySummary.currentCalendarMetaDirty) {
+      return "calendar";
+    }
+    return "all";
+  };
+
+  const runAutosaveSaveOperation = async ({
+    requestedMode = "calendar",
+    reason = "autosave",
+  } = {}) => {
+    if (!isGoogleDriveConfigured || !isGoogleDriveConnected || !hasBootstrappedDriveConfig) {
+      return {
+        ok: true,
+        skipped: true,
+        reason: "drive_not_ready",
+      };
+    }
+
+    const dirtySummary = readDriveDirtyCalendarSummary();
+    const writeMode = resolveAutosaveWriteMode({
+      requestedMode,
+      dirtySummary,
+    });
+    if (writeMode === "none") {
+      return {
+        ok: true,
+        skipped: true,
+        reason: "already_clean",
+      };
+    }
+
+    if (writeMode === "all") {
+      const saveResult = await saveAllDriveStateFromBrowser();
+      if (!saveResult.ok) {
+        return {
+          ok: false,
+          retryable: true,
+          writeMode,
+          reason,
+          saveResult,
+        };
+      }
+      syncDriveRuntimeCacheFromPayload(saveResult);
+      markAllCalendarsAsDriveCleanFromLocalState();
+      return {
+        ok: true,
+        skipped: false,
+        writeMode,
+        reason,
+        saveResult,
+      };
+    }
+
+    const saveResult = await saveCurrentCalendarStateFromBrowser();
+    if (!saveResult.ok) {
+      return {
+        ok: false,
+        retryable: true,
+        writeMode: "calendar",
+        reason,
+        saveResult,
+      };
+    }
+    syncDriveRuntimeCacheFromPayload(saveResult);
+    markCalendarDayAsDriveCleanFromLocalState(
+      saveResult?.currentCalendarId || saveResult?.calendar?.id || "",
+    );
+    return {
+      ok: true,
+      skipped: false,
+      writeMode: "calendar",
+      reason,
+      saveResult,
+    };
+  };
+
+  const scheduleAutosaveRetry = ({ requestedMode = "calendar", reason = "autosave", failure } = {}) => {
+    if (!isGoogleDriveConfigured || !isGoogleDriveConnected || !hasBootstrappedDriveConfig) {
+      return;
+    }
+
+    clearAutosaveRetryTimerIfScheduled();
+    const retryStepIndex = Math.min(
+      AUTOSAVE_RETRY_STEPS_MS.length - 1,
+      Math.max(0, autosaveRetryAttempt),
+    );
+    const retryDelayMs = AUTOSAVE_RETRY_STEPS_MS[retryStepIndex];
+    const nextAttempt = autosaveRetryAttempt + 1;
+    autosaveRetryAttempt = nextAttempt;
+    logGoogleAuthMessage("warn", `Autosave failed; retrying in ${retryDelayMs}ms (attempt ${nextAttempt}).`, {
+      requestedMode,
+      reason,
+      failure,
+    });
+
+    autosaveRetryTimer = window.setTimeout(() => {
+      autosaveRetryTimer = 0;
+      void runAutosaveNow({
+        requestedMode,
+        reason: `${reason}_retry_${nextAttempt}`,
+      });
+    }, retryDelayMs);
+  };
+
+  const runAutosaveNow = async ({ requestedMode = "calendar", reason = "autosave" } = {}) => {
+    const normalizedRequestedMode = requestedMode === "all" ? "all" : "calendar";
+    autosavePendingMode = mergeAutosaveModes(autosavePendingMode, normalizedRequestedMode);
+
+    if (autosaveInFlight) {
+      autosavePendingRun = true;
+      if (autosaveRunPromise) {
+        return autosaveRunPromise;
+      }
+      return {
+        ok: true,
+        queued: true,
+      };
+    }
+
+    clearAutosaveDebounceTimerIfScheduled();
+    clearAutosaveMaxWaitTimerIfScheduled();
+    clearAutosaveRetryTimerIfScheduled();
+
+    autosaveInFlight = true;
+    autosaveRunPromise = (async () => {
+      let currentMode = autosavePendingMode;
+      let currentReason = reason;
+      autosavePendingMode = "calendar";
+
+      while (true) {
+        autosavePendingRun = false;
+        const result = await runAutosaveSaveOperation({
+          requestedMode: currentMode,
+          reason: currentReason,
+        });
+        if (result.ok) {
+          resetAutosaveRetryState();
+        } else if (result.retryable) {
+          const retryMode = mergeAutosaveModes(currentMode, autosavePendingMode);
+          scheduleAutosaveRetry({
+            requestedMode: retryMode,
+            reason: currentReason,
+            failure: result,
+          });
+        }
+
+        if (!autosavePendingRun || !result.ok) {
+          autosavePendingRun = false;
+          autosavePendingMode = "calendar";
+          return result;
+        }
+
+        currentMode = mergeAutosaveModes(currentMode, autosavePendingMode);
+        autosavePendingMode = "calendar";
+        currentReason = "autosave_pending_changes";
+      }
+    })();
+
+    try {
+      return await autosaveRunPromise;
+    } finally {
+      autosaveRunPromise = null;
+      autosaveInFlight = false;
+    }
+  };
+
+  const scheduleAutosave = ({
+    requestedMode = "calendar",
+    reason = "local_change",
+    immediate = false,
+  } = {}) => {
+    if (!isGoogleDriveConfigured || !isGoogleDriveConnected || !hasBootstrappedDriveConfig) {
+      return;
+    }
+
+    const normalizedRequestedMode = requestedMode === "all" ? "all" : "calendar";
+    autosavePendingMode = mergeAutosaveModes(autosavePendingMode, normalizedRequestedMode);
+
+    if (immediate) {
+      clearAutosaveDebounceTimerIfScheduled();
+      clearAutosaveMaxWaitTimerIfScheduled();
+      void runAutosaveNow({
+        requestedMode: autosavePendingMode,
+        reason,
+      });
+      return;
+    }
+
+    if (autosaveInFlight) {
+      autosavePendingRun = true;
+      return;
+    }
+
+    clearAutosaveRetryTimerIfScheduled();
+    clearAutosaveDebounceTimerIfScheduled();
+    autosaveDebounceTimer = window.setTimeout(() => {
+      autosaveDebounceTimer = 0;
+      clearAutosaveMaxWaitTimerIfScheduled();
+      void runAutosaveNow({
+        requestedMode: autosavePendingMode,
+        reason: `${reason}_debounce`,
+      });
+    }, AUTOSAVE_DEBOUNCE_MS);
+
+    if (!autosaveMaxWaitTimer) {
+      autosaveMaxWaitTimer = window.setTimeout(() => {
+        autosaveMaxWaitTimer = 0;
+        clearAutosaveDebounceTimerIfScheduled();
+        void runAutosaveNow({
+          requestedMode: autosavePendingMode,
+          reason: `${reason}_max_wait`,
+        });
+      }, AUTOSAVE_MAX_WAIT_MS);
+    }
+  };
+
+  const flushAutosave = async ({ requestedMode = "all", reason = "autosave_flush" } = {}) => {
+    clearAutosaveDebounceTimerIfScheduled();
+    clearAutosaveMaxWaitTimerIfScheduled();
+    const normalizedRequestedMode = requestedMode === "all" ? "all" : "calendar";
+    return runAutosaveNow({
+      requestedMode: normalizedRequestedMode,
+      reason,
+    });
+  };
+
   const syncLocalStateFromDrive = (bootstrapPayload) => {
     const remoteState =
       bootstrapPayload && typeof bootstrapPayload === "object" ? bootstrapPayload.remoteState : null;
@@ -3748,6 +4088,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     if (shouldImportRemoteState) {
       const importedFromDrive = syncLocalStateFromDrive(payload);
       markAllCalendarsAsDriveCleanFromLocalState();
+      resetAutosaveRuntimeState();
       if (importedFromDrive) {
         hasBootstrappedDriveConfig = true;
         logGoogleAuthMessage(
@@ -3765,6 +4106,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
     hasBootstrappedDriveConfig = true;
     if (payload.created) {
       markAllCalendarsAsDriveCleanFromLocalState();
+      resetAutosaveRuntimeState();
       logGoogleAuthMessage(
         "info",
         "Created first-time justcalendar.json config in Google Drive.",
@@ -3796,6 +4138,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
           syncDriveRuntimeCacheFromPayload(directBootstrapResult);
           hasBootstrappedDriveConfig = true;
           markAllCalendarsAsDriveCleanFromLocalState();
+          resetAutosaveRuntimeState();
           logGoogleAuthMessage(
             "info",
             "Created first-time justcalendar.json and calendar data files directly from browser.",
@@ -3869,6 +4212,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
         if (payload?.missing) {
           hasBootstrappedDriveConfig = false;
           clearCalendarDriveDirtyBaselines();
+          resetAutosaveRuntimeState();
           logGoogleAuthMessage("warn", missingLogMessage, payload);
           return {
             ok: true,
@@ -3893,6 +4237,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
         const importedFromDrive = syncLocalStateFromDrive(payload);
         hasBootstrappedDriveConfig = true;
         markAllCalendarsAsDriveCleanFromLocalState();
+        resetAutosaveRuntimeState();
         if (importedFromDrive) {
           logGoogleAuthMessage("info", successLogMessage);
           if (typeof onDriveStateImported === "function") {
@@ -3948,6 +4293,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
       hasBootstrappedDriveConfig = false;
       clearDriveRuntimeCache();
       clearCalendarDriveDirtyBaselines();
+      resetAutosaveRuntimeState();
     }
 
     if (!configured) {
@@ -4107,8 +4453,54 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
   setExpanded(false);
 
   if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
-    window.addEventListener(LOCAL_CALENDAR_STORAGE_CHANGED_EVENT, () => {
+    window.addEventListener(LOCAL_CALENDAR_STORAGE_CHANGED_EVENT, (event) => {
       syncCalendarDirtyIndicator();
+
+      const changedStorageKey =
+        event instanceof CustomEvent && isObjectLike(event.detail) && typeof event.detail.key === "string"
+          ? event.detail.key
+          : "";
+      const previousActiveCalendarId = lastObservedLocalActiveCalendarId;
+      const nextActiveCalendarId = refreshObservedLocalActiveCalendarId();
+      const hasActiveCalendarSwitch =
+        Boolean(nextActiveCalendarId) &&
+        Boolean(previousActiveCalendarId) &&
+        nextActiveCalendarId !== previousActiveCalendarId;
+
+      if (!isGoogleDriveConfigured || !isGoogleDriveConnected || !hasBootstrappedDriveConfig) {
+        return;
+      }
+
+      if (hasActiveCalendarSwitch) {
+        scheduleAutosave({
+          requestedMode: "all",
+          reason: "active_calendar_switched",
+          immediate: true,
+        });
+        return;
+      }
+
+      scheduleAutosave({
+        requestedMode: changedStorageKey === CALENDARS_STORAGE_KEY ? "all" : "calendar",
+        reason: changedStorageKey ? `local_change_${changedStorageKey}` : "local_change",
+      });
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "hidden") {
+        return;
+      }
+      void flushAutosave({
+        requestedMode: "all",
+        reason: "lifecycle_visibility_hidden",
+      });
+    });
+
+    window.addEventListener("pagehide", () => {
+      void flushAutosave({
+        requestedMode: "all",
+        reason: "lifecycle_pagehide",
+      });
     });
   }
 
@@ -4141,6 +4533,17 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
         }
 
         event.preventDefault();
+        const flushBeforeDisconnect = await flushAutosave({
+          requestedMode: "all",
+          reason: "before_disconnect",
+        });
+        if (!flushBeforeDisconnect?.ok) {
+          logGoogleAuthMessage(
+            "warn",
+            "Autosave flush failed before disconnect; proceeding with Google Drive logout.",
+            flushBeforeDisconnect,
+          );
+        }
         if (optionButton instanceof HTMLButtonElement) {
           optionButton.disabled = true;
         } else {
@@ -4201,6 +4604,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
           return;
         }
 
+        clearAutosaveScheduledTimers({ includeRetry: true });
         if (optionButton instanceof HTMLButtonElement) {
           optionButton.disabled = true;
         }
@@ -4222,6 +4626,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
           } else {
             syncDriveRuntimeCacheFromPayload(saveResult);
             markAllCalendarsAsDriveCleanFromLocalState();
+            resetAutosaveRuntimeState();
             saveOutcome = "success";
             logGoogleAuthMessage(
               "info",
@@ -4275,6 +4680,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
           return;
         }
 
+        clearAutosaveScheduledTimers({ includeRetry: true });
         if (optionButton instanceof HTMLButtonElement) {
           optionButton.disabled = true;
         }
@@ -4298,6 +4704,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
             markCalendarDayAsDriveCleanFromLocalState(
               saveResult?.currentCalendarId || saveResult?.calendar?.id || "",
             );
+            resetAutosaveRetryState();
             saveOutcome = "success";
             logGoogleAuthMessage(
               "info",
@@ -4351,6 +4758,20 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
           return;
         }
 
+        const flushBeforeLoadAll = await flushAutosave({
+          requestedMode: "all",
+          reason: "before_load_all",
+        });
+        if (!flushBeforeLoadAll?.ok) {
+          logGoogleAuthMessage(
+            "warn",
+            "Load aborted because local autosave flush failed before replacing local state from Drive.",
+            flushBeforeLoadAll,
+          );
+          setExpanded(false);
+          return;
+        }
+
         if (optionButton instanceof HTMLButtonElement) {
           optionButton.disabled = true;
         }
@@ -4397,6 +4818,20 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
           return;
         }
 
+        const flushBeforeLoadCalendar = await flushAutosave({
+          requestedMode: "all",
+          reason: "before_load_calendar",
+        });
+        if (!flushBeforeLoadCalendar?.ok) {
+          logGoogleAuthMessage(
+            "warn",
+            "Load Calendar aborted because local autosave flush failed before reading from Drive.",
+            flushBeforeLoadCalendar,
+          );
+          setExpanded(false);
+          return;
+        }
+
         if (optionButton instanceof HTMLButtonElement) {
           optionButton.disabled = true;
         }
@@ -4420,6 +4855,8 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
             markCalendarDayAsDriveCleanFromLocalState(
               loadResult?.currentCalendarId || loadResult?.calendar?.id || "",
             );
+            resetAutosaveRetryState();
+            refreshObservedLocalActiveCalendarId();
             logGoogleAuthMessage(
               "info",
               "Loaded current calendar data from Google Drive.",
@@ -4529,6 +4966,7 @@ function setupProfileSwitcher({ switcher, button, options, onDriveStateImported 
           localStorage.setItem(CALENDAR_DAY_STATES_STORAGE_KEY, JSON.stringify({}));
           localStorage.removeItem(LEGACY_DAY_STATE_STORAGE_KEY);
           clearCalendarDriveDirtyBaselines();
+          resetAutosaveRuntimeState();
           logGoogleAuthMessage(
             "info",
             "Cleared local calendar data. Only Default Calendar (Check) remains.",
