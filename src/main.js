@@ -1673,6 +1673,7 @@ function setupProfileSwitcher({
   let autosaveRunPromise = null;
   let autosavePendingRun = false;
   let autosavePendingMode = "calendar";
+  let suppressPendingSyncBeforeUnloadOnce = false;
   let lastObservedLocalActiveCalendarId =
     typeof getStoredActiveCalendar?.().id === "string" ? getStoredActiveCalendar().id : "";
 
@@ -4663,6 +4664,7 @@ function setupProfileSwitcher({
   const clearLocalCalendarDataToDefault = ({
     reason = "clear_all",
     reload = true,
+    suppressBeforeUnloadWarning = false,
   } = {}) => {
     try {
       localStorage.setItem(
@@ -4694,6 +4696,9 @@ function setupProfileSwitcher({
       );
 
       if (reload) {
+        if (suppressBeforeUnloadWarning) {
+          suppressPendingSyncBeforeUnloadOnce = true;
+        }
         window.location.reload();
         return {
           ok: true,
@@ -5869,6 +5874,10 @@ function setupProfileSwitcher({
     });
 
     window.addEventListener("beforeunload", (event) => {
+      if (suppressPendingSyncBeforeUnloadOnce) {
+        suppressPendingSyncBeforeUnloadOnce = false;
+        return;
+      }
       if (!hasPendingDriveSync()) {
         return;
       }
@@ -6033,6 +6042,7 @@ function setupProfileSwitcher({
           const clearAfterLogoutResult = clearLocalCalendarDataToDefault({
             reason: "logout_google_drive",
             reload: true,
+            suppressBeforeUnloadWarning: true,
           });
           if (clearAfterLogoutResult?.ok && clearAfterLogoutResult.reloaded) {
             return;
