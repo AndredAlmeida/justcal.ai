@@ -19,6 +19,11 @@ const telegramLogPanel = document.getElementById("telegram-log-panel");
 const telegramLogPanelBackdrop = document.getElementById("telegram-log-panel-backdrop");
 const telegramLogCloseButton = document.getElementById("telegram-log-close");
 const telegramLogFrame = document.getElementById("telegram-log-frame");
+const driveConflictPopupBackdrop = document.getElementById("drive-conflict-popup-backdrop");
+const driveConflictPopup = document.getElementById("drive-conflict-popup");
+const driveConflictRestoreButton = document.getElementById("drive-conflict-restore-btn");
+const driveConflictOverwriteButton = document.getElementById("drive-conflict-overwrite-btn");
+const driveConflictCancelButton = document.getElementById("drive-conflict-cancel-btn");
 const monthViewButton = document.getElementById("view-month-btn");
 const yearViewButton = document.getElementById("view-year-btn");
 const calendarViewToggle = document.getElementById("calendar-view-toggle");
@@ -1242,6 +1247,77 @@ function setupTelegramLogPanel({ toggleButton, panel, backdrop, closeButton }) {
     }
     event.preventDefault();
     setOpenState(false, { focusToggle: true });
+  });
+}
+
+function setupDriveConflictPopup({ popup, backdrop, restoreButton, overwriteButton, cancelButton }) {
+  const isTextEntryTarget = (rawTarget) => {
+    if (!(rawTarget instanceof Element)) {
+      return false;
+    }
+
+    if (
+      rawTarget instanceof HTMLInputElement ||
+      rawTarget instanceof HTMLTextAreaElement ||
+      rawTarget instanceof HTMLSelectElement
+    ) {
+      return true;
+    }
+
+    if (rawTarget.isContentEditable) {
+      return true;
+    }
+
+    return Boolean(rawTarget.closest("[contenteditable='true']"));
+  };
+
+  const setOpenState = (isOpen) => {
+    popup.classList.toggle("is-open", isOpen);
+    backdrop?.classList.toggle("is-open", isOpen);
+    popup.setAttribute("aria-hidden", String(!isOpen));
+    backdrop?.setAttribute("aria-hidden", String(!isOpen));
+  };
+
+  setOpenState(false);
+
+  restoreButton?.addEventListener("click", () => {
+    console.info(
+      "[JustCalendar][DriveConflictPopup] Restore data from server and delete local data selected.",
+    );
+    setOpenState(false);
+  });
+
+  overwriteButton?.addEventListener("click", () => {
+    console.info(
+      "[JustCalendar][DriveConflictPopup] Delete server data and use local data selected.",
+    );
+    setOpenState(false);
+  });
+
+  cancelButton?.addEventListener("click", () => {
+    console.info("[JustCalendar][DriveConflictPopup] Login cancelled.");
+    setOpenState(false);
+  });
+
+  backdrop?.addEventListener("click", () => {
+    setOpenState(false);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    const pressedKey = typeof event.key === "string" ? event.key.toLowerCase() : "";
+    if (pressedKey === "l") {
+      if (isTextEntryTarget(event.target)) {
+        return;
+      }
+      event.preventDefault();
+      setOpenState(!popup.classList.contains("is-open"));
+      return;
+    }
+
+    if (event.key === "Escape" && popup.classList.contains("is-open")) {
+      event.preventDefault();
+      setOpenState(false);
+    }
   });
 }
 
@@ -6095,6 +6171,16 @@ if (telegramLogToggleButton && telegramLogPanel) {
 
 if (telegramLogFrame) {
   setupTelegramLogFrameThemeSync(telegramLogFrame);
+}
+
+if (driveConflictPopup) {
+  setupDriveConflictPopup({
+    popup: driveConflictPopup,
+    backdrop: driveConflictPopupBackdrop,
+    restoreButton: driveConflictRestoreButton,
+    overwriteButton: driveConflictOverwriteButton,
+    cancelButton: driveConflictCancelButton,
+  });
 }
 
 if (headerCalendarsButton) {

@@ -3541,6 +3541,94 @@
         pointer-events: auto;
       }
 
+      #drive-conflict-popup-backdrop {
+        position: fixed;
+        inset: 0;
+        background: color-mix(in srgb, #020617 70%, transparent);
+        opacity: 0;
+        pointer-events: none;
+        z-index: 240;
+        transition: opacity 0.2s ease;
+      }
+
+      #drive-conflict-popup-backdrop.is-open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      #drive-conflict-popup {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(0.98);
+        width: min(42rem, calc(100vw - 1.5rem));
+        display: grid;
+        gap: 1rem;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 1.1rem 1rem 1rem;
+        background: var(--panel);
+        box-shadow: 0 22px 44px rgba(2, 6, 23, 0.5);
+        opacity: 0;
+        pointer-events: none;
+        z-index: 241;
+        transition:
+          opacity 0.2s ease,
+          transform 0.22s ease;
+      }
+
+      #drive-conflict-popup.is-open {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      .drive-conflict-popup-title {
+        margin: 0;
+        text-align: center;
+        font-size: clamp(1rem, 2.1vw, 1.2rem);
+        line-height: 1.35;
+        font-weight: 720;
+        color: var(--ink);
+      }
+
+      .drive-conflict-popup-actions {
+        display: grid;
+        gap: 0.75rem;
+      }
+
+      .drive-conflict-popup-btn {
+        width: 100%;
+        min-height: 3.25rem;
+        border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+        border-radius: 999px;
+        padding: 0.72rem 1.08rem;
+        background: color-mix(in srgb, var(--muted) 62%, var(--panel) 38%);
+        color: var(--ink);
+        font-size: 0.94rem;
+        font-weight: 680;
+        line-height: 1.25;
+        text-align: center;
+        cursor: pointer;
+        transition:
+          transform 0.14s ease,
+          background-color 0.14s ease;
+      }
+
+      .drive-conflict-popup-btn:hover {
+        transform: translateY(-1px);
+        background: color-mix(in srgb, var(--muted) 84%, var(--panel) 16%);
+      }
+
+      .drive-conflict-popup-btn:active {
+        transform: translateY(0);
+      }
+
+      .drive-conflict-popup-btn:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--score-slider-active) 72%, transparent);
+        outline-offset: 2px;
+      }
+
       .drive-busy-wheel {
         width: 3rem;
         height: 3rem;
@@ -5128,6 +5216,29 @@
         aria-label="Loading"
       ></div>
     </div>
+    <div id="drive-conflict-popup-backdrop" aria-hidden="true"></div>
+    <section
+      id="drive-conflict-popup"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Drive conflict decision"
+      aria-hidden="true"
+    >
+      <p class="drive-conflict-popup-title">
+        There is already an account with data on Google Drive<br />How do you want to proceed?
+      </p>
+      <div class="drive-conflict-popup-actions">
+        <button id="drive-conflict-restore-btn" class="drive-conflict-popup-btn" type="button">
+          Restore data from server and delete local data
+        </button>
+        <button id="drive-conflict-overwrite-btn" class="drive-conflict-popup-btn" type="button">
+          Delete server data and use local data
+        </button>
+        <button id="drive-conflict-cancel-btn" class="drive-conflict-popup-btn" type="button">
+          Cancel Login
+        </button>
+      </div>
+    </section>
     <div id="telegram-log-panel-backdrop" aria-hidden="true"></div>
     <section
       id="telegram-log-panel"
