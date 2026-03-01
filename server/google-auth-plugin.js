@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 const OAUTH_STATE_COOKIE = "justcal_google_oauth_state";
 const OAUTH_CONNECTED_COOKIE = "justcal_google_connected";
 const OAUTH_SESSION_COOKIE = "justcal_google_sid";
+const GOOGLE_LOGIN_MARKER_PARAM = "justcal_google_login";
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const OAUTH_SESSION_TTL_SECONDS = 60 * 60 * 24 * 365;
 const TOKEN_STORE_PATH = resolve(process.cwd(), ".data/google-auth-store.json");
@@ -182,6 +183,21 @@ function getSharedCookieDomain(requestOrigin) {
     // Ignore parse failures and fall back to host-only cookies.
   }
   return "";
+}
+
+function appendGoogleLoginMarkerToRedirectTarget(redirectTarget, requestOrigin) {
+  const normalizedTarget =
+    typeof redirectTarget === "string" && redirectTarget.trim() ? redirectTarget.trim() : "/";
+  try {
+    const parsedTarget = new URL(normalizedTarget, requestOrigin);
+    parsedTarget.searchParams.set(GOOGLE_LOGIN_MARKER_PARAM, "1");
+    if (parsedTarget.origin === requestOrigin) {
+      return `${parsedTarget.pathname}${parsedTarget.search}${parsedTarget.hash}`;
+    }
+    return parsedTarget.toString();
+  } catch {
+    return normalizedTarget;
+  }
 }
 
 function normalizeSessionId(rawSessionId) {
@@ -3580,6 +3596,10 @@ function createGoogleAuthPlugin(config) {
       typeof googleConfig.postAuthRedirect === "string" && googleConfig.postAuthRedirect.trim()
         ? googleConfig.postAuthRedirect.trim()
         : "/";
+    const redirectTargetWithLoginMarker = appendGoogleLoginMarkerToRedirectTarget(
+      redirectTarget,
+      requestOrigin,
+    );
 
     res.statusCode = 302;
     res.setHeader("Set-Cookie", [
@@ -3591,7 +3611,7 @@ function createGoogleAuthPlugin(config) {
       }),
     ]);
     res.setHeader("Cache-Control", "no-store");
-    res.setHeader("Location", redirectTarget);
+    res.setHeader("Location", redirectTargetWithLoginMarker);
     res.end();
   };
 

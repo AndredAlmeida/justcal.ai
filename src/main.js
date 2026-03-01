@@ -1271,6 +1271,20 @@ function setupDriveConflictPopup({ popup, backdrop, restoreButton, overwriteButt
     return Boolean(rawTarget.closest("[contenteditable='true']"));
   };
 
+  let pendingDecisionPromise = null;
+  let resolvePendingDecision = null;
+
+  const finishDecision = (decision) => {
+    if (typeof resolvePendingDecision === "function") {
+      const resolve = resolvePendingDecision;
+      resolvePendingDecision = null;
+      pendingDecisionPromise = null;
+      resolve(decision);
+      return true;
+    }
+    return false;
+  };
+
   const setOpenState = (isOpen) => {
     popup.classList.toggle("is-open", isOpen);
     backdrop?.classList.toggle("is-open", isOpen);
@@ -1278,29 +1292,40 @@ function setupDriveConflictPopup({ popup, backdrop, restoreButton, overwriteButt
     backdrop?.setAttribute("aria-hidden", String(!isOpen));
   };
 
+  const closePopup = ({ decision = "" } = {}) => {
+    setOpenState(false);
+    if (decision) {
+      finishDecision(decision);
+    }
+  };
+
+  const promptDecision = () => {
+    if (pendingDecisionPromise) {
+      return pendingDecisionPromise;
+    }
+    pendingDecisionPromise = new Promise((resolve) => {
+      resolvePendingDecision = resolve;
+      setOpenState(true);
+    });
+    return pendingDecisionPromise;
+  };
+
   setOpenState(false);
 
   restoreButton?.addEventListener("click", () => {
-    console.info(
-      "[JustCalendar][DriveConflictPopup] Restore data from server and delete local data selected.",
-    );
-    setOpenState(false);
+    closePopup({ decision: "restore" });
   });
 
   overwriteButton?.addEventListener("click", () => {
-    console.info(
-      "[JustCalendar][DriveConflictPopup] Delete server data and use local data selected.",
-    );
-    setOpenState(false);
+    closePopup({ decision: "overwrite" });
   });
 
   cancelButton?.addEventListener("click", () => {
-    console.info("[JustCalendar][DriveConflictPopup] Login cancelled.");
-    setOpenState(false);
+    closePopup({ decision: "cancel" });
   });
 
   backdrop?.addEventListener("click", () => {
-    setOpenState(false);
+    closePopup({ decision: resolvePendingDecision ? "cancel" : "" });
   });
 
   document.addEventListener("keydown", (event) => {
@@ -1310,18 +1335,37 @@ function setupDriveConflictPopup({ popup, backdrop, restoreButton, overwriteButt
         return;
       }
       event.preventDefault();
-      setOpenState(!popup.classList.contains("is-open"));
+      const shouldOpen = !popup.classList.contains("is-open");
+      if (shouldOpen) {
+        setOpenState(true);
+        return;
+      }
+      closePopup({ decision: resolvePendingDecision ? "cancel" : "" });
       return;
     }
 
     if (event.key === "Escape" && popup.classList.contains("is-open")) {
       event.preventDefault();
-      setOpenState(false);
+      closePopup({ decision: resolvePendingDecision ? "cancel" : "" });
     }
   });
+
+  return {
+    promptDecision,
+    open: () => setOpenState(true),
+    close: () => closePopup(),
+    isOpen: () => popup.classList.contains("is-open"),
+  };
 }
 
-function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveStateImported }) {
+function setupProfileSwitcher({
+  switcher,
+  button,
+  options,
+  actionsMenu,
+  onDriveStateImported,
+  driveConflictPopup,
+}) {
   const optionButtons = [...document.querySelectorAll("[data-profile-action]")];
   const googleDriveButton = options.querySelector('[data-profile-action="google-drive"]');
   const googleDriveLabel = options.querySelector("#profile-google-drive-label");
@@ -1334,6 +1378,8 @@ function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveS
   const driveBusyOverlay = document.getElementById("drive-busy-overlay");
   const driveDirtyIndicator = document.getElementById("drive-dirty-indicator");
   const GOOGLE_CONNECTED_COOKIE_NAME = "justcal_google_connected";
+  const GOOGLE_LOGIN_MARKER_PARAM = "justcal_google_login";
+  const GOOGLE_LOGIN_INTENT_STORAGE_KEY = "justcal-google-login-intent";
   const GOOGLE_AUTH_LOG_PREFIX = "[JustCalendar][GoogleDriveAuth]";
   const BACKEND_CALL_LOG_PREFIX = "[JustCalendar][BackendCall]";
   const LOCAL_CALENDAR_STORAGE_CHANGED_EVENT = "justcal:local-calendar-storage-changed";
@@ -1355,6 +1401,7 @@ function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveS
   let cachedDriveFolderId = "";
   let cachedDriveConfigFileId = "";
   let cachedDriveAccountId = readStoredDriveAccountId();
+  let shouldPromptDriveConflictAfterLogin = false;
   const knownDriveAccountsById = new Map();
   const cachedDriveCalendarConfigById = new Map();
   const cachedDriveCalendarFileMetaById = new Map();
@@ -1521,6 +1568,95 @@ function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveS
   };
 
   const hasGoogleConnectedCookie = () => readCookieValue(GOOGLE_CONNECTED_COOKIE_NAME) === "1";
+
+  const consumeGoogleLoginMarker = () => {
+    let hasLoginMarker = false;
+
+    try {
+      if (sessionStorage.getItem(GOOGLE_LOGIN_INTENT_STORAGE_KEY) === "1") {
+        hasLoginMarker = true;
+      }
+      sessionStorage.removeItem(GOOGLE_LOGIN_INTENT_STORAGE_KEY);
+    } catch {
+      // Ignore sessionStorage access issues.
+    }
+
+    if (typeof window === "undefined" || typeof window.location?.href !== "string") {
+      return hasLoginMarker;
+    }
+    try {
+      const currentUrl = new URL(window.location.href);
+      const markerValue = currentUrl.searchParams.get(GOOGLE_LOGIN_MARKER_PARAM);
+      if (markerValue !== "1") {
+        return hasLoginMarker;
+      }
+      hasLoginMarker = true;
+      currentUrl.searchParams.delete(GOOGLE_LOGIN_MARKER_PARAM);
+      const nextRelativeUrl = `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`;
+      if (typeof window.history?.replaceState === "function") {
+        window.history.replaceState({}, document.title, nextRelativeUrl);
+      }
+      return hasLoginMarker;
+    } catch {
+      return hasLoginMarker;
+    }
+  };
+
+  const markGoogleLoginIntent = (isPending) => {
+    try {
+      if (isPending) {
+        sessionStorage.setItem(GOOGLE_LOGIN_INTENT_STORAGE_KEY, "1");
+      } else {
+        sessionStorage.removeItem(GOOGLE_LOGIN_INTENT_STORAGE_KEY);
+      }
+    } catch {
+      // Ignore sessionStorage access issues.
+    }
+  };
+
+  const disconnectGoogleDriveSession = async ({
+    failureLogMessage = "Google disconnect request failed.",
+    endpointErrorLogMessage = "Google disconnect endpoint returned an error.",
+  } = {}) => {
+    try {
+      const response = await backendFetch("/api/auth/google/disconnect", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) {
+        const payload = await readResponsePayload(response);
+        logGoogleAuthMessage("error", endpointErrorLogMessage, {
+          status: response.status,
+          statusText: response.statusText,
+          payload,
+        });
+        return {
+          ok: false,
+          status: response.status,
+          statusText: response.statusText,
+          payload,
+        };
+      }
+      return {
+        ok: true,
+      };
+    } catch (error) {
+      logGoogleAuthMessage("error", failureLogMessage, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  };
+
+  shouldPromptDriveConflictAfterLogin = consumeGoogleLoginMarker();
+  if (shouldPromptDriveConflictAfterLogin) {
+    logGoogleAuthMessage("info", "Detected fresh Google login return; conflict prompt is enabled.");
+  }
 
   const setGoogleDriveText = (nextLabel) => {
     if (googleDriveLabel) {
@@ -4302,13 +4438,23 @@ function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveS
     return true;
   };
 
-  const ensureDriveBootstrapConfig = async () => {
-    if (!isGoogleDriveConfigured || !isGoogleDriveConnected || hasBootstrappedDriveConfig) {
-      return;
+  const ensureDriveBootstrapConfig = async ({ promptOnExistingRemoteData = false } = {}) => {
+    if (!isGoogleDriveConfigured || !isGoogleDriveConnected) {
+      return {
+        ok: true,
+        skipped: true,
+        reason: "drive_not_connected_or_configured",
+      };
+    }
+    if (hasBootstrappedDriveConfig) {
+      return {
+        ok: true,
+        skipped: true,
+        reason: "already_bootstrapped",
+      };
     }
     if (bootstrapDriveConfigPromise) {
-      await bootstrapDriveConfigPromise;
-      return;
+      return bootstrapDriveConfigPromise;
     }
 
     setDriveBusy(true);
@@ -4325,11 +4471,93 @@ function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveS
             "Created first-time justcalendar.json and calendar data files directly from browser.",
             directBootstrapResult,
           );
-          return;
+          return {
+            ok: true,
+            handled: true,
+            mode: "created",
+            result: directBootstrapResult,
+          };
         }
 
         if (directBootstrapResult.ok && directBootstrapResult.reason === "config_exists") {
-          await loadDriveStateViaBackend({
+          let conflictDecision = "restore";
+          if (
+            promptOnExistingRemoteData &&
+            driveConflictPopup &&
+            typeof driveConflictPopup.promptDecision === "function"
+          ) {
+            setDriveBusy(false);
+            conflictDecision = await driveConflictPopup.promptDecision();
+
+            if (conflictDecision === "cancel") {
+              const disconnectResult = await disconnectGoogleDriveSession({
+                failureLogMessage:
+                  "Google disconnect request failed while cancelling login from conflict popup.",
+                endpointErrorLogMessage:
+                  "Google disconnect endpoint returned an error while cancelling login from conflict popup.",
+              });
+              markGoogleLoginIntent(false);
+              if (disconnectResult.ok) {
+                logGoogleAuthMessage(
+                  "info",
+                  "Google Drive login was cancelled from conflict popup. Session was disconnected locally.",
+                );
+              }
+              await refreshGoogleDriveStatus();
+              return {
+                ok: Boolean(disconnectResult.ok),
+                cancelled: true,
+                disconnected: Boolean(disconnectResult.ok),
+                disconnectResult,
+              };
+            }
+
+            setDriveBusy(true);
+          } else if (promptOnExistingRemoteData) {
+            logGoogleAuthMessage(
+              "warn",
+              "Conflict popup could not be shown because popup API was unavailable. Falling back to restore.",
+            );
+          } else {
+            logGoogleAuthMessage(
+              "info",
+              "Remote Drive config exists; restoring server state without conflict prompt.",
+            );
+          }
+
+          if (conflictDecision === "overwrite") {
+            const saveResult = await saveAllDriveStateFromBrowser();
+            if (!saveResult.ok) {
+              logGoogleAuthMessage(
+                "error",
+                "Conflict popup overwrite failed while saving local data to Google Drive.",
+                saveResult,
+              );
+              return {
+                ok: false,
+                phase: "conflict_overwrite_save",
+                saveResult,
+              };
+            }
+
+            syncDriveRuntimeCacheFromPayload(saveResult);
+            hasBootstrappedDriveConfig = true;
+            markAllCalendarsAsDriveCleanFromLocalState();
+            resetAutosaveRuntimeState();
+            logGoogleAuthMessage(
+              "info",
+              "Conflict popup overwrite selected. Local data replaced server data.",
+              saveResult,
+            );
+            return {
+              ok: true,
+              handled: true,
+              mode: "overwrite",
+              result: saveResult,
+            };
+          }
+
+          const loadResult = await loadDriveStateViaBackend({
             successLogMessage: "Loaded calendars and data from Google Drive during bootstrap.",
             matchLogMessage: "Bootstrap load finished; local state already matched Drive.",
             missingLogMessage: "Bootstrap load did not find justcalendar.json in Google Drive.",
@@ -4337,7 +4565,12 @@ function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveS
               "Bootstrap load completed, but no remote state was returned from Google Drive.",
             failureLogMessage: "Bootstrap load failed while reading state from Google Drive.",
           });
-          return;
+          return {
+            ok: Boolean(loadResult?.ok),
+            handled: Boolean(loadResult?.ok),
+            mode: "restore",
+            result: loadResult,
+          };
         }
 
         logGoogleAuthMessage(
@@ -4345,15 +4578,25 @@ function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveS
           "Browser bootstrap for justcalendar.json failed. Backend JSON creation fallback is disabled.",
           directBootstrapResult,
         );
+        return {
+          ok: false,
+          phase: "bootstrap_probe",
+          result: directBootstrapResult,
+        };
       } catch (error) {
         logGoogleAuthMessage("error", "Drive config bootstrap request failed.", {
           error: error instanceof Error ? error.message : String(error),
         });
+        return {
+          ok: false,
+          phase: "bootstrap_exception",
+          error: error instanceof Error ? error.message : String(error),
+        };
       }
     })();
 
     try {
-      await bootstrapDriveConfigPromise;
+      return await bootstrapDriveConfigPromise;
     } finally {
       bootstrapDriveConfigPromise = null;
       setDriveBusy(false);
@@ -4579,31 +4822,14 @@ function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveS
             ? statusPayload.drivePermissionId
             : "",
       });
-      if (statusPayload?.connected) {
-        if (!hasBootstrappedDriveConfig) {
-          if (statusPayload?.driveConfigReady) {
-            let shouldEnsureConfigAfterLoad = false;
-            setDriveBusy(true);
-            try {
-              const loadResult = await loadDriveStateViaBackend({
-                successLogMessage: "Loaded calendars and data from Google Drive during startup.",
-                matchLogMessage: "Startup load finished; local state already matched Drive.",
-                missingLogMessage:
-                  "No justcalendar.json config found in Google Drive during startup; creating bootstrap config.",
-                noRemoteStateLogMessage:
-                  "Startup load completed, but no remote state was returned from Google Drive.",
-                failureLogMessage: "Startup load failed while reading state from Google Drive.",
-              });
-              shouldEnsureConfigAfterLoad = Boolean(loadResult?.ok && loadResult?.missing);
-            } finally {
-              setDriveBusy(false);
-            }
-            if (shouldEnsureConfigAfterLoad) {
-              await ensureDriveBootstrapConfig();
-            }
-          } else {
-            await ensureDriveBootstrapConfig();
-          }
+      if (statusPayload?.connected && !hasBootstrappedDriveConfig) {
+        const shouldPromptConflict = shouldPromptDriveConflictAfterLogin;
+        shouldPromptDriveConflictAfterLogin = false;
+        const bootstrapResult = await ensureDriveBootstrapConfig({
+          promptOnExistingRemoteData: shouldPromptConflict,
+        });
+        if (bootstrapResult?.cancelled) {
+          return;
         }
       }
 
@@ -5371,6 +5597,7 @@ function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveS
         }
 
         if (!isGoogleDriveConnected) {
+          markGoogleLoginIntent(true);
           logGoogleAuthMessage("info", "Starting Google OAuth redirect.");
           setExpanded(false);
           if (optionButton instanceof HTMLButtonElement) {
@@ -5399,24 +5626,11 @@ function setupProfileSwitcher({ switcher, button, options, actionsMenu, onDriveS
           optionButton.setAttribute("aria-disabled", "true");
         }
         try {
-          const response = await backendFetch("/api/auth/google/disconnect", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
+          await disconnectGoogleDriveSession({
+            failureLogMessage: "Google disconnect request failed.",
+            endpointErrorLogMessage: "Google disconnect endpoint returned an error.",
           });
-          if (!response.ok) {
-            const payload = await readResponsePayload(response);
-            logGoogleAuthMessage("error", "Google disconnect endpoint returned an error.", {
-              status: response.status,
-              statusText: response.statusText,
-              payload,
-            });
-          }
-        } catch (error) {
-          logGoogleAuthMessage("error", "Google disconnect request failed.", {
-            error: error instanceof Error ? error.message : String(error),
-          });
+          markGoogleLoginIntent(false);
         } finally {
           if (optionButton instanceof HTMLButtonElement) {
             optionButton.disabled = false;
@@ -6173,8 +6387,9 @@ if (telegramLogFrame) {
   setupTelegramLogFrameThemeSync(telegramLogFrame);
 }
 
+let driveConflictPopupApi = null;
 if (driveConflictPopup) {
-  setupDriveConflictPopup({
+  driveConflictPopupApi = setupDriveConflictPopup({
     popup: driveConflictPopup,
     backdrop: driveConflictPopupBackdrop,
     restoreButton: driveConflictRestoreButton,
@@ -6202,6 +6417,7 @@ if (profileSwitcher && headerProfileButton && profileOptions) {
     options: profileOptions,
     actionsMenu: driveActionsMenu,
     onDriveStateImported: applyDriveImportedStateInPlace,
+    driveConflictPopup: driveConflictPopupApi,
   });
 }
 
