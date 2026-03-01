@@ -1269,6 +1269,7 @@ function setupAgentConnectPopup({
   tokenHint,
 }) {
   let driveReady = false;
+  let hasStoredToken = false;
   let isGeneratingToken = false;
   let generateTokenHandler = null;
 
@@ -1300,6 +1301,45 @@ function setupAgentConnectPopup({
     tokenHint.classList.toggle("is-ready", Boolean(ready));
   };
 
+  const hasVisibleTokenValue = () => Boolean(tokenInput && tokenInput.value.trim());
+
+  const syncTokenFieldPresentation = () => {
+    if (!tokenInput) {
+      return;
+    }
+    if (hasVisibleTokenValue()) {
+      return;
+    }
+    tokenInput.placeholder = hasStoredToken
+      ? "Token already generated (not shown for security)"
+      : "Token not generated yet";
+  };
+
+  const clearVisibleTokenValue = () => {
+    if (!tokenInput) {
+      return;
+    }
+    if (hasVisibleTokenValue()) {
+      tokenInput.value = "";
+    }
+    syncTokenFieldPresentation();
+    if (copyButton) {
+      copyButton.disabled = true;
+    }
+    if (!driveReady) {
+      setHintMessage("Login to Google Drive to enable token generation.");
+      return;
+    }
+    if (hasStoredToken) {
+      setHintMessage(
+        "A token was already generated for this account, but it is not shown. Generate New Token to rotate it.",
+        { ready: true },
+      );
+      return;
+    }
+    setHintMessage("Google Drive is connected. Generate a token for your CLI.", { ready: true });
+  };
+
   const setOpenState = (isOpen, { focusToggle = false } = {}) => {
     popup.classList.toggle("is-open", isOpen);
     backdrop?.classList.toggle("is-open", isOpen);
@@ -1309,13 +1349,28 @@ function setupAgentConnectPopup({
     toggleButton.setAttribute("data-tooltip", isOpen ? "Close Agent Connect" : "Connect to your Agent");
     toggleButton.setAttribute("aria-label", isOpen ? "Close agent connection popup" : "Connect to your Agent");
 
+    if (!isOpen) {
+      clearVisibleTokenValue();
+    }
+
     if (!isOpen && focusToggle) {
       toggleButton.focus({ preventScroll: true });
     }
   };
 
-  const applyDriveConnectionState = ({ connected = false, configured = true } = {}) => {
+  const applyDriveConnectionState = ({
+    connected = false,
+    configured = true,
+    hasAgentToken = false,
+  } = {}) => {
     driveReady = Boolean(connected && configured);
+    hasStoredToken = Boolean(hasAgentToken);
+    syncTokenFieldPresentation();
+
+    const hasVisibleToken = hasVisibleTokenValue();
+    if (copyButton) {
+      copyButton.disabled = !hasVisibleToken;
+    }
     if (generateButton) {
       generateButton.disabled = !driveReady || isGeneratingToken;
     }
@@ -1323,11 +1378,21 @@ function setupAgentConnectPopup({
       setHintMessage("Login to Google Drive to enable token generation.");
       return;
     }
+    if (hasVisibleToken) {
+      return;
+    }
+    if (hasStoredToken) {
+      setHintMessage(
+        "A token was already generated for this account, but it is not shown. Generate New Token to rotate it.",
+        { ready: true },
+      );
+      return;
+    }
     setHintMessage("Google Drive is connected. Generate a token for your CLI.", { ready: true });
   };
 
   setOpenState(false);
-  applyDriveConnectionState({ connected: false, configured: false });
+  applyDriveConnectionState({ connected: false, configured: false, hasAgentToken: false });
   if (copyButton) {
     copyButton.disabled = true;
   }
@@ -1363,6 +1428,8 @@ function setupAgentConnectPopup({
         return;
       }
       tokenInput.value = generateResult.token.trim();
+      hasStoredToken = true;
+      syncTokenFieldPresentation();
       if (copyButton) {
         copyButton.disabled = false;
       }
@@ -4948,6 +5015,7 @@ function setupProfileSwitcher({
     identityConnected = false,
     driveScopeGranted = false,
     drivePermissionId = "",
+    hasAgentToken = false,
   } = {}) => {
     if (!googleDriveButton) return;
 
@@ -4958,6 +5026,7 @@ function setupProfileSwitcher({
       onGoogleDriveStateChange({
         connected: isGoogleDriveConnected,
         configured: isGoogleDriveConfigured,
+        hasAgentToken: Boolean(hasAgentToken),
       });
     };
 
@@ -5053,6 +5122,7 @@ function setupProfileSwitcher({
           typeof statusPayload?.drivePermissionId === "string"
             ? statusPayload.drivePermissionId
             : "",
+        hasAgentToken: Boolean(statusPayload?.hasAgentToken),
       });
       if (statusPayload?.connected && !hasBootstrappedDriveConfig) {
         const shouldPromptConflict = shouldPromptDriveConflictAfterLogin;
@@ -6205,6 +6275,7 @@ function setupProfileSwitcher({
                 typeof statusPayload?.drivePermissionId === "string"
                   ? statusPayload.drivePermissionId
                   : "",
+              hasAgentToken: Boolean(statusPayload?.hasAgentToken),
             });
           } else {
             logGoogleAuthMessage(

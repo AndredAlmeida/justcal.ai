@@ -3722,6 +3722,7 @@ function createGoogleAuthPlugin(config) {
       driveScopeGranted: hasIdentitySession ? hasDriveScope : false,
       driveFolderReady: hasIdentitySession ? Boolean(storedState.driveFolderId) : false,
       driveConfigReady: hasIdentitySession ? Boolean(storedState.configFileId) : false,
+      hasAgentToken: hasIdentitySession ? Boolean(storedState.agentTokenHmac) : false,
       configured: Boolean(googleConfig.clientId && googleConfig.clientSecret),
     });
   };
