@@ -14,11 +14,19 @@ const driveActionsMenu = document.getElementById("drive-actions-menu");
 const returnToCurrentButton = document.getElementById("return-to-current");
 const themeToggleButton = document.getElementById("theme-toggle");
 const mobileDebugToggleButton = document.getElementById("mobile-debug-toggle");
+const openclawButton = document.getElementById("openclaw-link");
 const telegramLogToggleButton = document.getElementById("telegram-log-toggle");
 const telegramLogPanel = document.getElementById("telegram-log-panel");
 const telegramLogPanelBackdrop = document.getElementById("telegram-log-panel-backdrop");
 const telegramLogCloseButton = document.getElementById("telegram-log-close");
 const telegramLogFrame = document.getElementById("telegram-log-frame");
+const agentConnectPopupBackdrop = document.getElementById("agent-connect-popup-backdrop");
+const agentConnectPopup = document.getElementById("agent-connect-popup");
+const agentConnectCloseButton = document.getElementById("agent-connect-close");
+const agentConnectGenerateButton = document.getElementById("agent-connect-generate");
+const agentConnectCopyButton = document.getElementById("agent-connect-copy");
+const agentConnectTokenInput = document.getElementById("agent-connect-token");
+const agentConnectTokenHint = document.getElementById("agent-connect-token-hint");
 const driveConflictPopupBackdrop = document.getElementById("drive-conflict-popup-backdrop");
 const driveConflictPopup = document.getElementById("drive-conflict-popup");
 const driveConflictRestoreButton = document.getElementById("drive-conflict-restore-btn");
@@ -1250,6 +1258,164 @@ function setupTelegramLogPanel({ toggleButton, panel, backdrop, closeButton }) {
   });
 }
 
+function setupAgentConnectPopup({
+  toggleButton,
+  popup,
+  backdrop,
+  closeButton,
+  generateButton,
+  copyButton,
+  tokenInput,
+  tokenHint,
+}) {
+  let driveReady = false;
+  let isGeneratingToken = false;
+  let generateTokenHandler = null;
+
+  const isTextEntryTarget = (rawTarget) => {
+    if (!(rawTarget instanceof Element)) {
+      return false;
+    }
+
+    if (
+      rawTarget instanceof HTMLInputElement ||
+      rawTarget instanceof HTMLTextAreaElement ||
+      rawTarget instanceof HTMLSelectElement
+    ) {
+      return true;
+    }
+
+    if (rawTarget.isContentEditable) {
+      return true;
+    }
+
+    return Boolean(rawTarget.closest("[contenteditable='true']"));
+  };
+
+  const setHintMessage = (nextMessage, { ready = false } = {}) => {
+    if (!tokenHint) {
+      return;
+    }
+    tokenHint.textContent = nextMessage;
+    tokenHint.classList.toggle("is-ready", Boolean(ready));
+  };
+
+  const setOpenState = (isOpen, { focusToggle = false } = {}) => {
+    popup.classList.toggle("is-open", isOpen);
+    backdrop?.classList.toggle("is-open", isOpen);
+    popup.setAttribute("aria-hidden", String(!isOpen));
+    backdrop?.setAttribute("aria-hidden", String(!isOpen));
+    toggleButton.setAttribute("aria-expanded", String(isOpen));
+    toggleButton.setAttribute("data-tooltip", isOpen ? "Close Agent Connect" : "Connect to your Agent");
+    toggleButton.setAttribute("aria-label", isOpen ? "Close agent connection popup" : "Connect to your Agent");
+
+    if (!isOpen && focusToggle) {
+      toggleButton.focus({ preventScroll: true });
+    }
+  };
+
+  const applyDriveConnectionState = ({ connected = false, configured = true } = {}) => {
+    driveReady = Boolean(connected && configured);
+    if (generateButton) {
+      generateButton.disabled = !driveReady || isGeneratingToken;
+    }
+    if (!driveReady) {
+      setHintMessage("Login to Google Drive to enable token generation.");
+      return;
+    }
+    setHintMessage("Google Drive is connected. Generate a token for your CLI.", { ready: true });
+  };
+
+  setOpenState(false);
+  applyDriveConnectionState({ connected: false, configured: false });
+  if (copyButton) {
+    copyButton.disabled = true;
+  }
+
+  toggleButton.addEventListener("click", () => {
+    const shouldOpen = !popup.classList.contains("is-open");
+    setOpenState(shouldOpen);
+  });
+
+  closeButton?.addEventListener("click", () => {
+    setOpenState(false, { focusToggle: true });
+  });
+
+  backdrop?.addEventListener("click", () => {
+    setOpenState(false);
+  });
+
+  generateButton?.addEventListener("click", async () => {
+    if (!driveReady || !tokenInput || isGeneratingToken) {
+      return;
+    }
+    if (typeof generateTokenHandler !== "function") {
+      setHintMessage("Token generation is not ready yet. Please refresh and try again.");
+      return;
+    }
+    isGeneratingToken = true;
+    generateButton.disabled = true;
+    setHintMessage("Generating token...", { ready: true });
+    try {
+      const generateResult = await generateTokenHandler();
+      if (!generateResult?.ok || typeof generateResult.token !== "string" || !generateResult.token.trim()) {
+        setHintMessage("Token generation failed. Verify Google Drive connection and try again.");
+        return;
+      }
+      tokenInput.value = generateResult.token.trim();
+      if (copyButton) {
+        copyButton.disabled = false;
+      }
+      setHintMessage(
+        "Token generated. Any previously generated token was invalidated. Copy this one now.",
+        { ready: true },
+      );
+    } catch {
+      setHintMessage("Token generation failed. Verify Google Drive connection and try again.");
+    } finally {
+      isGeneratingToken = false;
+      generateButton.disabled = !driveReady;
+    }
+  });
+
+  copyButton?.addEventListener("click", async () => {
+    if (!tokenInput || !tokenInput.value.trim()) {
+      return;
+    }
+    const tokenValue = tokenInput.value.trim();
+    try {
+      await navigator.clipboard.writeText(tokenValue);
+      setHintMessage("Token copied to clipboard.", { ready: true });
+    } catch {
+      tokenInput.focus({ preventScroll: true });
+      tokenInput.select();
+      setHintMessage("Copy failed. Copy the token manually from the field.", {
+        ready: true,
+      });
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !popup.classList.contains("is-open")) {
+      return;
+    }
+    if (isTextEntryTarget(event.target)) {
+      return;
+    }
+    event.preventDefault();
+    setOpenState(false, { focusToggle: true });
+  });
+
+  return {
+    setDriveConnectionState: applyDriveConnectionState,
+    setGenerateTokenHandler: (handler) => {
+      generateTokenHandler = typeof handler === "function" ? handler : null;
+    },
+    close: () => setOpenState(false),
+    isOpen: () => popup.classList.contains("is-open"),
+  };
+}
+
 function setupDriveConflictPopup({ popup, backdrop, restoreButton, overwriteButton, cancelButton }) {
   const isTextEntryTarget = (rawTarget) => {
     if (!(rawTarget instanceof Element)) {
@@ -1365,6 +1531,8 @@ function setupProfileSwitcher({
   actionsMenu,
   onDriveStateImported,
   driveConflictPopup,
+  agentConnectPopup,
+  onGoogleDriveStateChange,
 }) {
   const optionButtons = [...document.querySelectorAll("[data-profile-action]")];
   const googleDriveButton = options.querySelector('[data-profile-action="google-drive"]');
@@ -1653,9 +1821,60 @@ function setupProfileSwitcher({
     }
   };
 
+  const generateAgentTokenViaBackend = async () => {
+    if (!isGoogleDriveConfigured) {
+      return {
+        ok: false,
+        error: "not_configured",
+      };
+    }
+    if (!isGoogleDriveConnected) {
+      return {
+        ok: false,
+        error: "not_connected",
+      };
+    }
+
+    logGoogleAuthMessage("info", "Generating agent token via backend.");
+    const response = await backendFetch("/api/auth/google/agent-token/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    const payload = await readResponsePayload(response);
+    const token = payload && typeof payload.token === "string" ? payload.token.trim() : "";
+
+    if (!response.ok || !payload?.ok || !token) {
+      logGoogleAuthMessage("error", "Agent token generation endpoint returned an error.", {
+        status: response.status,
+        statusText: response.statusText,
+        payload,
+      });
+      return {
+        ok: false,
+        status: response.status,
+        statusText: response.statusText,
+        payload,
+      };
+    }
+
+    logGoogleAuthMessage("info", "Agent token generated via backend.");
+
+    return {
+      ok: true,
+      token,
+      issuedAt: typeof payload.issuedAt === "string" ? payload.issuedAt : "",
+    };
+  };
+
   shouldPromptDriveConflictAfterLogin = consumeGoogleLoginMarker();
   if (shouldPromptDriveConflictAfterLogin) {
     logGoogleAuthMessage("info", "Detected fresh Google login return; conflict prompt is enabled.");
+  }
+
+  if (agentConnectPopup && typeof agentConnectPopup.setGenerateTokenHandler === "function") {
+    agentConnectPopup.setGenerateTokenHandler(generateAgentTokenViaBackend);
   }
 
   const setGoogleDriveText = (nextLabel) => {
@@ -4732,6 +4951,16 @@ function setupProfileSwitcher({
   } = {}) => {
     if (!googleDriveButton) return;
 
+    const notifyGoogleDriveStateChange = () => {
+      if (typeof onGoogleDriveStateChange !== "function") {
+        return;
+      }
+      onGoogleDriveStateChange({
+        connected: isGoogleDriveConnected,
+        configured: isGoogleDriveConfigured,
+      });
+    };
+
     isGoogleDriveConnected = connected;
     isGoogleDriveConfigured = configured;
     googleSub =
@@ -4761,6 +4990,7 @@ function setupProfileSwitcher({
         googleDriveButton.removeAttribute("href");
       }
       syncCalendarDirtyIndicator();
+      notifyGoogleDriveStateChange();
       return;
     }
 
@@ -4780,6 +5010,7 @@ function setupProfileSwitcher({
         googleDriveButton.setAttribute("href", "#");
       }
       syncCalendarDirtyIndicator();
+      notifyGoogleDriveStateChange();
       return;
     }
 
@@ -4794,6 +5025,7 @@ function setupProfileSwitcher({
       googleDriveButton.setAttribute("href", "/api/auth/google/start");
     }
     syncCalendarDirtyIndicator();
+    notifyGoogleDriveStateChange();
   };
 
   const refreshGoogleDriveStatus = async () => {
@@ -6387,6 +6619,20 @@ if (telegramLogFrame) {
   setupTelegramLogFrameThemeSync(telegramLogFrame);
 }
 
+let agentConnectPopupApi = null;
+if (openclawButton && agentConnectPopup) {
+  agentConnectPopupApi = setupAgentConnectPopup({
+    toggleButton: openclawButton,
+    popup: agentConnectPopup,
+    backdrop: agentConnectPopupBackdrop,
+    closeButton: agentConnectCloseButton,
+    generateButton: agentConnectGenerateButton,
+    copyButton: agentConnectCopyButton,
+    tokenInput: agentConnectTokenInput,
+    tokenHint: agentConnectTokenHint,
+  });
+}
+
 let driveConflictPopupApi = null;
 if (driveConflictPopup) {
   driveConflictPopupApi = setupDriveConflictPopup({
@@ -6418,6 +6664,10 @@ if (profileSwitcher && headerProfileButton && profileOptions) {
     actionsMenu: driveActionsMenu,
     onDriveStateImported: applyDriveImportedStateInPlace,
     driveConflictPopup: driveConflictPopupApi,
+    agentConnectPopup: agentConnectPopupApi,
+    onGoogleDriveStateChange: (driveState) => {
+      agentConnectPopupApi?.setDriveConnectionState?.(driveState);
+    },
   });
 }
 

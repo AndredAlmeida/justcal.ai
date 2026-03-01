@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 
 const OAUTH_STATE_COOKIE = "justcal_google_oauth_state";
 const OAUTH_CONNECTED_COOKIE = "justcal_google_connected";
@@ -66,6 +66,9 @@ const SUPPORTED_BOOTSTRAP_THEMES = new Set([
 ]);
 const DRIVE_DATA_LOAD_CONCURRENCY = 5;
 const OAUTH_SESSION_ID_PATTERN = /^[a-f0-9]{32,128}$/;
+const AGENT_TOKEN_BYTES = 24;
+const AGENT_TOKEN_PEPPER_ENV_KEY = "GOOGLE_AGENT_TOKEN_PEPPER";
+const ENV_LOCAL_PATH = resolve(process.cwd(), ".env.local");
 
 const pendingStates = new Map();
 const inFlightEnsureFolderPromiseBySession = new Map();
@@ -198,6 +201,18 @@ function appendGoogleLoginMarkerToRedirectTarget(redirectTarget, requestOrigin) 
   } catch {
     return normalizedTarget;
   }
+}
+
+function generateAgentTokenValue() {
+  const entropy = randomBytes(AGENT_TOKEN_BYTES).toString("hex");
+  return `jca_${entropy}`;
+}
+
+function computeAgentTokenHmac({ pepper = "", token = "" } = {}) {
+  if (!pepper || !token) {
+    return "";
+  }
+  return createHmac("sha256", pepper).update(`${pepper}${token}`).digest("hex");
 }
 
 function normalizeSessionId(rawSessionId) {
@@ -910,6 +925,14 @@ function normalizeStoredAuthState(rawState) {
     typeof storedState.configFileId === "string" && storedState.configFileId.trim()
       ? storedState.configFileId.trim()
       : "";
+  const agentTokenHmac =
+    typeof storedState.agentTokenHmac === "string" && storedState.agentTokenHmac.trim()
+      ? storedState.agentTokenHmac.trim()
+      : "";
+  const agentTokenIssuedAt =
+    typeof storedState.agentTokenIssuedAt === "string" && storedState.agentTokenIssuedAt.trim()
+      ? storedState.agentTokenIssuedAt.trim()
+      : "";
 
   const updatedAt =
     typeof storedState.updatedAt === "string" && storedState.updatedAt.trim()
@@ -925,6 +948,8 @@ function normalizeStoredAuthState(rawState) {
     drivePermissionId,
     driveFolderId,
     configFileId,
+    agentTokenHmac,
+    agentTokenIssuedAt,
     updatedAt,
   };
 }
@@ -1045,7 +1070,13 @@ function writeStoredAuthState(sessionId = "", nextState = {}) {
     return normalizeStoredAuthState({});
   }
   const store = readStoredAuthStore();
-  const normalizedState = normalizeStoredAuthState(nextState);
+  const existingState = normalizeStoredAuthState(store.sessions[normalizedSessionId]);
+  const nextStateObject =
+    nextState && typeof nextState === "object" && !Array.isArray(nextState) ? nextState : {};
+  const normalizedState = normalizeStoredAuthState({
+    ...existingState,
+    ...nextStateObject,
+  });
   const nextSessions = {
     ...store.sessions,
     [normalizedSessionId]: normalizedState,
@@ -1152,6 +1183,50 @@ function ensureGoogleOAuthConfigured(config, res) {
     return false;
   }
   return true;
+}
+
+function ensureAgentTokenPepperConfigured(config, res) {
+  const normalizePepper = (rawPepper) =>
+    typeof rawPepper === "string" && rawPepper.trim() ? rawPepper.trim() : "";
+
+  const readPepperFromEnvFile = () => {
+    if (!existsSync(ENV_LOCAL_PATH)) {
+      return "";
+    }
+    try {
+      const rawContents = readFileSync(ENV_LOCAL_PATH, "utf8");
+      const matchedLine = rawContents.match(/^\s*GOOGLE_AGENT_TOKEN_PEPPER\s*=\s*(.+)\s*$/m);
+      if (!matchedLine || typeof matchedLine[1] !== "string") {
+        return "";
+      }
+      const rawValue = matchedLine[1].trim();
+      if (
+        (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
+        (rawValue.startsWith("'") && rawValue.endsWith("'"))
+      ) {
+        return rawValue.slice(1, -1).trim();
+      }
+      return rawValue;
+    } catch {
+      return "";
+    }
+  };
+
+  const pepper = normalizePepper(config?.agentTokenPepper)
+    || normalizePepper(process.env?.[AGENT_TOKEN_PEPPER_ENV_KEY])
+    || normalizePepper(readPepperFromEnvFile());
+  if (!pepper) {
+    jsonResponse(res, 500, {
+      error: "agent_token_pepper_not_configured",
+      message:
+        "Agent token pepper is not configured. Set GOOGLE_AGENT_TOKEN_PEPPER in .env.local.",
+    });
+    return "";
+  }
+  if (config && typeof config === "object" && !config.agentTokenPepper) {
+    config.agentTokenPepper = pepper;
+  }
+  return pepper;
 }
 
 async function ensureJustCalendarFolder({ accessToken }) {
@@ -3400,6 +3475,7 @@ function createGoogleAuthPlugin(config) {
     projectNumber: config.projectNumber,
     redirectUri: config.redirectUri,
     postAuthRedirect: config.postAuthRedirect,
+    agentTokenPepper: config.agentTokenPepper,
   };
 
   const handleStart = (req, res) => {
@@ -3676,6 +3752,75 @@ function createGoogleAuthPlugin(config) {
       accessToken: stateWithToken.accessToken,
       tokenType,
       expiresAt: stateWithToken.accessTokenExpiresAt,
+    });
+  };
+
+  const handleAgentTokenGenerate = async (req, res) => {
+    if (!ensureGoogleOAuthConfigured(googleConfig, res)) {
+      return;
+    }
+    const tokenPepper = ensureAgentTokenPepperConfigured(googleConfig, res);
+    if (!tokenPepper) {
+      return;
+    }
+
+    const requestOrigin = getRequestOrigin(req);
+    const sessionId = ensureRequestSession(req, res, {
+      requestOrigin,
+      createIfMissing: true,
+    });
+
+    const tokenStateResult = await ensureValidAccessToken({
+      config: googleConfig,
+      sessionId,
+    });
+    if (!tokenStateResult.ok) {
+      jsonResponse(res, tokenStateResult.status, {
+        ok: false,
+        ...(tokenStateResult.payload || {
+          error: "not_connected",
+          message: "Google Drive is not connected.",
+        }),
+      });
+      return;
+    }
+
+    const stateWithToken = tokenStateResult.state;
+    if (!hasGoogleScope(stateWithToken.scope, GOOGLE_DRIVE_FILE_SCOPE)) {
+      jsonResponse(res, 403, {
+        ok: false,
+        error: "missing_drive_scope",
+        details: {
+          message:
+            "Current Google token does not include drive.file scope. Reconnect and approve Google Drive access.",
+        },
+      });
+      return;
+    }
+
+    const token = generateAgentTokenValue();
+    const tokenHmac = computeAgentTokenHmac({
+      pepper: tokenPepper,
+      token,
+    });
+    const issuedAt = new Date().toISOString();
+
+    writeStoredAuthState(sessionId, {
+      ...stateWithToken,
+      agentTokenHmac: tokenHmac,
+      agentTokenIssuedAt: issuedAt,
+      updatedAt: issuedAt,
+    });
+
+    // Production hardening note:
+    // - only HMAC is stored server-side; the plaintext token is returned once.
+    // - rotate GOOGLE_AGENT_TOKEN_PEPPER if compromise is suspected.
+    // - for multi-instance setups move auth/token state to shared durable storage.
+    jsonResponse(res, 200, {
+      ok: true,
+      token,
+      issuedAt,
+      invalidatedPreviousToken: true,
     });
   };
 
@@ -4140,6 +4285,15 @@ function createGoogleAuthPlugin(config) {
             return;
           }
           await handleAccessToken(req, res);
+          return;
+        }
+
+        if (requestUrl.pathname === "/api/auth/google/agent-token/generate") {
+          if (req.method !== "POST") {
+            methodNotAllowed(res);
+            return;
+          }
+          await handleAgentTokenGenerate(req, res);
           return;
         }
 

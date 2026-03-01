@@ -55,6 +55,7 @@ export default defineConfig(({ mode }) => {
         projectNumber: env.GOOGLE_OAUTH_PROJECT_NUMBER || '',
         redirectUri: env.GOOGLE_OAUTH_REDIRECT_URI || '',
         postAuthRedirect: env.GOOGLE_OAUTH_POST_AUTH_REDIRECT || '/',
+        agentTokenPepper: env.GOOGLE_AGENT_TOKEN_PEPPER || '',
       }),
     ],
     server: {

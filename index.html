@@ -3629,6 +3629,243 @@
         outline-offset: 2px;
       }
 
+      #agent-connect-popup-backdrop {
+        position: fixed;
+        inset: 0;
+        background: color-mix(in srgb, #020617 72%, transparent);
+        opacity: 0;
+        pointer-events: none;
+        z-index: 242;
+        transition: opacity 0.2s ease;
+      }
+
+      #agent-connect-popup-backdrop.is-open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      #agent-connect-popup {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -48%) scale(0.98);
+        width: min(39rem, calc(100vw - 1.5rem));
+        max-height: min(86vh, 48rem);
+        display: grid;
+        gap: 0.85rem;
+        padding: 1rem;
+        border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+        border-radius: 22px;
+        background:
+          radial-gradient(
+            120% 120% at 8% 0%,
+            color-mix(in srgb, var(--score-slider-active) 17%, transparent) 0%,
+            transparent 52%
+          ),
+          color-mix(in srgb, var(--panel) 95%, #0f172a 5%);
+        box-shadow:
+          0 28px 56px rgba(2, 6, 23, 0.56),
+          inset 0 1px 0 color-mix(in srgb, #ffffff 10%, transparent);
+        overflow-y: auto;
+        opacity: 0;
+        pointer-events: none;
+        z-index: 243;
+        transition:
+          opacity 0.2s ease,
+          transform 0.2s ease;
+      }
+
+      #agent-connect-popup.is-open {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      .agent-connect-popup-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.8rem;
+      }
+
+      .agent-connect-popup-eyebrow {
+        margin: 0;
+        font-size: 0.64rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        font-weight: 720;
+        color: color-mix(in srgb, var(--line) 74%, var(--ink) 26%);
+      }
+
+      #agent-connect-close {
+        width: 2rem;
+        height: 2rem;
+        display: inline-grid;
+        place-items: center;
+        border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--muted) 58%, var(--panel) 42%);
+        color: var(--ink);
+        font-size: 1.1rem;
+        line-height: 1;
+        cursor: pointer;
+        transition: transform 0.14s ease, background-color 0.14s ease;
+      }
+
+      #agent-connect-close:hover {
+        transform: translateY(-1px);
+        background: color-mix(in srgb, var(--muted) 86%, var(--panel) 14%);
+      }
+
+      #agent-connect-close:active {
+        transform: translateY(0);
+      }
+
+      #agent-connect-close:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--score-slider-active) 72%, transparent);
+        outline-offset: 2px;
+      }
+
+      .agent-connect-popup-title {
+        margin: 0;
+        font-size: clamp(1.1rem, 2.4vw, 1.34rem);
+        line-height: 1.25;
+        font-weight: 760;
+        color: var(--ink);
+      }
+
+      .agent-connect-popup-copy {
+        margin: 0;
+        font-size: 0.9rem;
+        line-height: 1.4;
+        color: color-mix(in srgb, var(--ink) 84%, var(--line) 16%);
+      }
+
+      .agent-connect-step-list {
+        margin: 0;
+        padding: 0 0 0 1.1rem;
+        display: grid;
+        gap: 0.45rem;
+        color: color-mix(in srgb, var(--ink) 88%, var(--line) 12%);
+        font-size: 0.9rem;
+        line-height: 1.36;
+      }
+
+      .agent-connect-step-list a {
+        color: var(--score-slider-active);
+        font-weight: 640;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 2px;
+      }
+
+      .agent-connect-token-card {
+        display: grid;
+        gap: 0.62rem;
+        padding: 0.82rem;
+        border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+        border-radius: 16px;
+        background: color-mix(in srgb, var(--muted) 54%, var(--panel) 46%);
+      }
+
+      .agent-connect-token-label {
+        margin: 0;
+        font-size: 0.68rem;
+        line-height: 1;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: color-mix(in srgb, var(--line) 76%, var(--ink) 24%);
+      }
+
+      .agent-connect-token-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 0.48rem;
+      }
+
+      #agent-connect-token {
+        width: 100%;
+        min-width: 0;
+        height: 2.45rem;
+        border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+        border-radius: 12px;
+        padding: 0 0.72rem;
+        background: color-mix(in srgb, var(--panel) 90%, transparent);
+        color: var(--ink);
+        font-size: 0.8rem;
+        font-family: "SFMono-Regular", ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+      }
+
+      #agent-connect-token::placeholder {
+        color: color-mix(in srgb, var(--line) 70%, var(--ink) 30%);
+      }
+
+      #agent-connect-copy,
+      #agent-connect-generate {
+        min-height: 2.45rem;
+        border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+        border-radius: 999px;
+        padding: 0.52rem 0.95rem;
+        background: color-mix(in srgb, var(--muted) 64%, var(--panel) 36%);
+        color: var(--ink);
+        font-size: 0.84rem;
+        font-weight: 680;
+        line-height: 1.1;
+        cursor: pointer;
+        transition:
+          transform 0.14s ease,
+          background-color 0.14s ease,
+          opacity 0.14s ease;
+      }
+
+      #agent-connect-generate {
+        width: 100%;
+        min-height: 2.75rem;
+        font-size: 0.9rem;
+      }
+
+      #agent-connect-copy:hover,
+      #agent-connect-generate:hover {
+        transform: translateY(-1px);
+        background: color-mix(in srgb, var(--muted) 86%, var(--panel) 14%);
+      }
+
+      #agent-connect-copy:active,
+      #agent-connect-generate:active {
+        transform: translateY(0);
+      }
+
+      #agent-connect-copy:focus-visible,
+      #agent-connect-generate:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--score-slider-active) 72%, transparent);
+        outline-offset: 2px;
+      }
+
+      #agent-connect-copy:disabled,
+      #agent-connect-generate:disabled {
+        opacity: 0.46;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .agent-connect-token-hint {
+        margin: 0;
+        font-size: 0.78rem;
+        line-height: 1.3;
+        color: color-mix(in srgb, #facc15 70%, var(--ink) 30%);
+      }
+
+      .agent-connect-token-hint.is-ready {
+        color: color-mix(in srgb, #22c55e 72%, var(--ink) 28%);
+      }
+
+      .agent-connect-token-warning {
+        margin: 0;
+        font-size: 0.76rem;
+        line-height: 1.3;
+        color: color-mix(in srgb, #f59e0b 82%, var(--ink) 18%);
+      }
+
       .drive-busy-wheel {
         width: 3rem;
         height: 3rem;
@@ -4359,6 +4596,28 @@
 
         .telegram-log-panel-title {
           font-size: 0.72rem;
+        }
+
+        #agent-connect-popup {
+          width: calc(100vw - 1rem);
+          padding: 0.82rem;
+          border-radius: 18px;
+        }
+
+        .agent-connect-popup-title {
+          font-size: 1.03rem;
+        }
+
+        .agent-connect-step-list {
+          font-size: 0.84rem;
+        }
+
+        .agent-connect-token-row {
+          grid-template-columns: 1fr;
+        }
+
+        #agent-connect-copy {
+          width: 100%;
         }
       }
     </style>
@@ -5136,9 +5395,9 @@
     <button
       id="openclaw-link"
       type="button"
-      aria-label="Connect to your Agent (To be implemented)"
+      aria-label="Connect to your Agent"
       class="tooltip-target tooltip-left"
-      data-tooltip="Connect to your Agent (To be implemented)"
+      data-tooltip="Connect to your Agent"
     >
       <img
         class="openclaw-icon"
@@ -5237,6 +5496,61 @@
         <button id="drive-conflict-cancel-btn" class="drive-conflict-popup-btn" type="button">
           Cancel Login
         </button>
+      </div>
+    </section>
+    <div id="agent-connect-popup-backdrop" aria-hidden="true"></div>
+    <section
+      id="agent-connect-popup"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Connect to your Agent"
+      aria-hidden="true"
+    >
+      <div class="agent-connect-popup-header">
+        <p class="agent-connect-popup-eyebrow">Agent Connection</p>
+        <button id="agent-connect-close" type="button" aria-label="Close agent connection popup">
+          ×
+        </button>
+      </div>
+      <h2 class="agent-connect-popup-title">Connect Just Calendar to Your Agent</h2>
+      <p class="agent-connect-popup-copy">
+        Connect your assistant by installing a skill and setting up the CLI, then generating a token.
+      </p>
+      <ol class="agent-connect-step-list">
+        <li>
+          Get the required skill from
+          <a
+            href="https://clawhub.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open ClawHub skill directory"
+          >
+            clawhub.ai
+          </a>
+          (placeholder link).
+        </li>
+        <li>Follow the CLI instructions shown on the skill page.</li>
+        <li>Generate an Agent Token below and paste it into your CLI setup.</li>
+      </ol>
+      <div class="agent-connect-token-card">
+        <p class="agent-connect-token-label">Agent Token</p>
+        <div class="agent-connect-token-row">
+          <input
+            id="agent-connect-token"
+            type="text"
+            readonly
+            placeholder="Token not generated yet"
+            aria-label="Generated agent token"
+          />
+          <button id="agent-connect-copy" type="button" disabled>Copy</button>
+        </div>
+        <button id="agent-connect-generate" type="button" disabled>Generate Token</button>
+        <p class="agent-connect-token-warning">
+          Warning: generating a new token immediately invalidates any previously generated token.
+        </p>
+        <p id="agent-connect-token-hint" class="agent-connect-token-hint">
+          Login to Google Drive to enable token generation.
+        </p>
       </div>
     </section>
     <div id="telegram-log-panel-backdrop" aria-hidden="true"></div>
